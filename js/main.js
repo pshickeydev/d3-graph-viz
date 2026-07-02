@@ -27,6 +27,9 @@ const searchIn  = $('#search-input');
 const searchRes = $('#search-results');
 const detail    = $('#detail-panel');
 const tooltip   = $('#tooltip');
+const btnExpandAll   = $('#btn-expand-all');
+const btnCollapseAll = $('#btn-collapse-all');
+const toggleLabels   = $('#toggle-labels input');
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -108,6 +111,24 @@ function loadGraph(json) {
     refreshGraph();
   }
   renderTypeFilters(filters, store, onTypeFilterChange);
+
+  btnExpandAll.onclick = () => {
+    store.expandAll();
+    refreshGraph();
+  };
+  btnCollapseAll.onclick = () => {
+    store.collapseAll();
+    refreshGraph();
+    selectedNodeId = null;
+    renderer?.highlight(null);
+    renderDetail(detail, null, [], store);
+  };
+  toggleLabels.onchange = () => {
+    if (renderer) {
+      renderer.showLabels = toggleLabels.checked;
+      refreshGraph();
+    }
+  };
 
   // Search — reveal and enable the target node's type if filtered out
   wireSearch(searchIn, searchRes, store, (nodeId) => {

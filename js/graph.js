@@ -41,6 +41,7 @@ export class GraphRenderer {
     this._nodeSel = null;
     this._labelSel = null;
     this._highlightedId = null;
+    this.showLabels = true;
 
     this._init();
   }
@@ -88,15 +89,14 @@ export class GraphRenderer {
     this.g.append('g').attr('class', 'nodes');
     this.g.append('g').attr('class', 'labels');
 
-    // Simulation (starts paused)
+    // Simulation (starts paused — forces are tuned per-update in _tuneForces)
     this.simulation = d3.forceSimulation()
-      .force('link', d3.forceLink().id((d) => d.id).distance(80).strength(0.3))
-      .force('charge', d3.forceManyBody().strength(-150).distanceMax(500))
+      .force('link', d3.forceLink().id((d) => d.id))
+      .force('charge', d3.forceManyBody())
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d) => this.store.nodeRadius(d) + 4))
-      .force('x', d3.forceX(width / 2).strength(0.03))
-      .force('y', d3.forceY(height / 2).strength(0.03))
-      .alphaDecay(0.02)
+      .force('collision', d3.forceCollide())
+      .force('x', d3.forceX(width / 2))
+      .force('y', d3.forceY(height / 2))
       .on('tick', () => this._tick());
 
     this.simulation.stop();
@@ -107,8 +107,8 @@ export class GraphRenderer {
       this.height = this.container.clientHeight;
       this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
       this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
-      this.simulation.force('x', d3.forceX(this.width / 2).strength(0.03));
-      this.simulation.force('y', d3.forceY(this.height / 2).strength(0.03));
+      this.simulation.force('x').x(this.width / 2);
+      this.simulation.force('y').y(this.height / 2);
     });
     ro.observe(this.container);
   }
@@ -167,12 +167,13 @@ export class GraphRenderer {
       });
     }
 
+    const spread = Math.min(200 + nodes.length * 0.5, 2000);
     const simNodes = nodes.map((n) => {
       const old = oldPositions.get(n.id);
       return {
         ...n,
-        x: old ? old.x : this.width / 2 + (Math.random() - 0.5) * 200,
-        y: old ? old.y : this.height / 2 + (Math.random() - 0.5) * 200,
+        x: old ? old.x : this.width / 2 + (Math.random() - 0.5) * spread,
+        y: old ? old.y : this.height / 2 + (Math.random() - 0.5) * spread,
         vx: old ? old.vx : 0,
         vy: old ? old.vy : 0,
       };
@@ -217,9 +218,12 @@ export class GraphRenderer {
       );
 
     // --- Labels (only for larger nodes) ---
+    const labelData = this.showLabels
+      ? simNodes.filter((n) => store.nodeRadius(n) >= 10)
+      : [];
     this._labelSel = this.g.select('.labels')
       .selectAll('text')
-      .data(simNodes.filter((n) => store.nodeRadius(n) >= 10), (d) => d.id)
+      .data(labelData, (d) => d.id)
       .join(
         (enter) => enter.append('text')
           .text((d) => d.label || d.id)
@@ -232,10 +236,49 @@ export class GraphRenderer {
         (exit) => exit.remove(),
       );
 
-    // Restart simulation
+    // Tune forces for current node count and restart
+    this._tuneForces(simNodes.length);
     this.simulation.nodes(simNodes);
     this.simulation.force('link').links(linkData);
     this.simulation.alpha(0.6).restart();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Force tuning                                                     */
+  /* ---------------------------------------------------------------- */
+
+  _tuneForces(nodeCount) {
+    const n = Math.max(nodeCount, 1);
+    const t = Math.min(n / 500, 1);
+
+    const chargeStrength = -150 + t * 90;
+    const chargeMax = 500 + t * Math.sqrt(n) * 10;
+    const linkDist = 80 - t * 40;
+    const linkStr = 0.3 - t * 0.15;
+    const gravity = 0.03 - t * 0.02;
+    const alphaDecay = 0.02 + t * 0.02;
+
+    const labelPad = this.showLabels ? 12 : 4;
+
+    this.simulation
+      .force('link')
+        .distance(linkDist)
+        .strength(linkStr);
+    this.simulation
+      .force('charge')
+        .strength(chargeStrength)
+        .distanceMax(chargeMax);
+    this.simulation
+      .force('collision')
+        .radius((d) => this.store.nodeRadius(d) + labelPad);
+    this.simulation
+      .force('x')
+        .strength(gravity);
+    this.simulation
+      .force('y')
+        .strength(gravity);
+    this.simulation
+      .alphaDecay(alphaDecay);
   }
 
   /* ---------------------------------------------------------------- */

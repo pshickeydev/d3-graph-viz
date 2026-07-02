@@ -336,6 +336,23 @@ export class GraphStore {
     return true;
   }
 
+  expandAll() {
+    for (const [id, node] of this.nodeMap) {
+      if (this.childrenOf.has(id) && this.childrenOf.get(id).length > 0) {
+        this.expanded.add(id);
+        node.expanded = true;
+      }
+    }
+  }
+
+  collapseAll() {
+    for (const id of this.expanded) {
+      const node = this.nodeMap.get(id);
+      if (node) node.expanded = false;
+    }
+    this.expanded.clear();
+  }
+
   /** Recursively collapse a node and all its descendants. */
   _collapseRecursive(nodeId) {
     this.expanded.delete(nodeId);

@@ -198,6 +198,56 @@ html, body {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Sidebar actions                                                    */
+/* ------------------------------------------------------------------ */
+
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.action-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.action-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.action-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Type filters                                                       */
 /* ------------------------------------------------------------------ */
 
