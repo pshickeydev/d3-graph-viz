@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D3 Graph Viewer</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Stats summary bar -->
+    <div id="stats-bar" class="hidden"></div>
+
+    <div id="main">
+      <!-- Graph canvas -->
+      <div id="graph-container">
+        <!-- Drop zone (shown until file is loaded) -->
+        <div id="drop-zone">
+          <div class="drop-icon">📊</div>
+          <div class="drop-text">Drop a graph JSON file here</div>
+          <div class="drop-hint">or click to browse</div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div id="sidebar" class="hidden">
+        <!-- Search -->
+        <div class="sidebar-section">
+          <h4>Search</h4>
+          <input id="search-input" type="text" placeholder="Search nodes…">
+          <div id="search-results" class="hidden"></div>
+        </div>
+
+        <!-- Type filters -->
+        <div class="sidebar-section">
+          <h4>Node Types</h4>
+          <div id="type-filters"></div>
+        </div>
+
+        <!-- Detail panel -->
+        <div class="sidebar-section" style="flex:1; overflow-y:auto; border-bottom:none;">
+          <h4>Details</h4>
+          <div id="detail-panel">
+            <div class="detail-empty">Click a node to see details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tooltip (positioned absolutely) -->
+  <div id="tooltip" class="hidden"></div>
+
+  <!-- Hidden file input -->
+  <input id="file-input" type="file" accept=".json" style="display:none">
+
+  <!-- D3 v7 from CDN -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <!-- App modules -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

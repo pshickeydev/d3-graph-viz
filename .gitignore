@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Crush / Claude
+.crush/
+.claude/
+.playwright-mcp/
+
+# Node (if dependencies are ever added)
+node_modules/
+
+# Test artifacts
+test-data.json
+*.jpeg
+*.png
