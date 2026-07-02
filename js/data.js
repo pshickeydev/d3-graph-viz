@@ -477,9 +477,11 @@ export class GraphStore {
     const maxR = 24;
     const minR = 4;
     const levels = Math.max(this.typeList.length - 1, 1);
-    const base = maxR - ((maxR - minR) * depth) / levels;
-    const extra = Math.min(Math.sqrt(node.childCount || 0), 8);
-    return base + extra;
+    const maxA = maxR * maxR;
+    const minA = minR * minR;
+    const baseA = maxA - ((maxA - minA) * depth) / levels;
+    const extraA = Math.min(node.childCount || 0, 64);
+    return Math.sqrt(baseA + extraA);
   }
 
   /**
