@@ -240,7 +240,21 @@ export class GraphRenderer {
     this._tuneForces(simNodes.length);
     this.simulation.nodes(simNodes);
     this.simulation.force('link').links(linkData);
-    this.simulation.alpha(0.6).restart();
+
+    // Pre-tick off-screen when many new nodes appear so the layout
+    // arrives close to settled before the first visible frame.
+    const newCount = simNodes.length - oldPositions.size;
+    if (newCount > 100) {
+      const ticks = Math.min(Math.round(80 + Math.sqrt(newCount) * 12), 500);
+      this.simulation.alpha(1).stop();
+      requestAnimationFrame(() => {
+        for (let i = 0; i < ticks; i++) this.simulation.tick();
+        this._tick();
+        this.simulation.alpha(0.2).restart();
+      });
+    } else {
+      this.simulation.alpha(0.6).restart();
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -251,19 +265,17 @@ export class GraphRenderer {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
 
-    const chargeStrength = -150 + t * 90;
-    const chargeMax = 500 + t * Math.sqrt(n) * 10;
-    const linkDist = 80 - t * 40;
-    const linkStr = 0.3 - t * 0.15;
-    const gravity = 0.03 - t * 0.02;
-    const alphaDecay = 0.02 + t * 0.02;
+    const chargeStrength = -150 + t * 50;
+    const chargeMax = 600 + t * Math.sqrt(n) * 20;
+    const linkDist = 80 - t * 55;
+    const gravity = 0.03 * (1 - t * 0.85);
+    const alphaDecay = 0.02 + t * 0.03;
 
     const labelPad = this.showLabels ? 12 : 4;
 
     this.simulation
       .force('link')
-        .distance(linkDist)
-        .strength(linkStr);
+        .distance(linkDist);
     this.simulation
       .force('charge')
         .strength(chargeStrength)
