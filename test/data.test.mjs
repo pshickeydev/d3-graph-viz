@@ -401,6 +401,60 @@ describe('nodeRadius', () => {
 });
 
 /* ================================================================
+ *  clusterCenters
+ * ================================================================ */
+
+describe('clusterCenters', () => {
+  test('returns a center for every type', () => {
+    const { store } = createStore(100, 100);
+    const centers = store.clusterCenters(800, 600);
+    for (const type of store.typeList) {
+      assert.ok(centers.has(type), `missing center for type ${type}`);
+    }
+  });
+
+  test('centers are arranged around canvas center', () => {
+    const { store } = createStore(100, 100);
+    const w = 800, h = 600;
+    const centers = store.clusterCenters(w, h);
+    const cx = w / 2, cy = h / 2;
+    for (const [, c] of centers) {
+      const dist = Math.hypot(c.x - cx, c.y - cy);
+      assert.ok(dist > 0, 'center should not be at canvas center');
+    }
+  });
+
+  test('single type center is at canvas center', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [{ id: 'a', type: 'only', label: 'A' }],
+      edges: [],
+    });
+    const centers = store.clusterCenters(800, 600);
+    const c = centers.get('only');
+    assert.equal(c.x, 400);
+    assert.equal(c.y, 300);
+  });
+
+  test('empty store returns empty map', () => {
+    const store = new GraphStore();
+    store.load({ nodes: [], edges: [] });
+    const centers = store.clusterCenters(800, 600);
+    assert.equal(centers.size, 0);
+  });
+
+  test('centers are deterministic for same dimensions', () => {
+    const { store } = createStore(100, 100);
+    const c1 = store.clusterCenters(800, 600);
+    const c2 = store.clusterCenters(800, 600);
+    for (const type of store.typeList) {
+      assert.equal(c1.get(type).x, c2.get(type).x);
+      assert.equal(c1.get(type).y, c2.get(type).y);
+    }
+  });
+});
+
+/* ================================================================
  *  edgesForNode & childrenIds
  * ================================================================ */
 

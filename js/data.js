@@ -515,6 +515,35 @@ export class GraphStore {
   }
 
   /**
+   * Compute spatial cluster centers for each node type, arranged
+   * in a circle around the canvas center. Used by the renderer's
+   * cluster force so same-type nodes group together visually.
+   * @param {number} width
+   * @param {number} height
+   * @returns {Map<string, {x: number, y: number}>}
+   */
+  clusterCenters(width, height) {
+    const centers = new Map();
+    const n = this.typeList.length;
+    if (n === 0) return centers;
+    const cx = width / 2;
+    const cy = height / 2;
+    if (n === 1) {
+      centers.set(this.typeList[0], { x: cx, y: cy });
+      return centers;
+    }
+    const radius = Math.min(width, height) * 0.35;
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+      centers.set(this.typeList[i], {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+      });
+    }
+    return centers;
+  }
+
+  /**
    * Get all edges connected to a node (in or out).
    * @param {string} nodeId
    * @returns {GraphEdge[]}

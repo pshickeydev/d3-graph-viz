@@ -10,6 +10,24 @@
 /*  GraphRenderer                                                      */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  Cluster force — pulls each node toward its type's cluster center    */
+/* ------------------------------------------------------------------ */
+
+function forceCluster(clusterCenters, strength) {
+  let nodes;
+  function force(alpha) {
+    for (const node of nodes) {
+      const center = clusterCenters.get(node.type);
+      if (!center) continue;
+      node.vx += (center.x - node.x) * strength * alpha;
+      node.vy += (center.y - node.y) * strength * alpha;
+    }
+  }
+  force.initialize = (n) => { nodes = n; };
+  return force;
+}
+
 export class GraphRenderer {
   /**
    * @param {HTMLElement}          container
@@ -43,6 +61,7 @@ export class GraphRenderer {
     this._highlightedId = null;
     this.showLabels = true;
     this._preTickId = 0;
+    this._clusterStrength = 0;
 
     this._init();
   }
@@ -94,10 +113,10 @@ export class GraphRenderer {
     this.simulation = d3.forceSimulation()
       .force('link', d3.forceLink().id((d) => d.id))
       .force('charge', d3.forceManyBody())
-      .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide())
       .force('x', d3.forceX(width / 2))
       .force('y', d3.forceY(height / 2))
+      .force('cluster', forceCluster(new Map(), 0))
       .on('tick', () => this._tick());
 
     this.simulation.stop();
@@ -107,9 +126,10 @@ export class GraphRenderer {
       this.width = this.container.clientWidth;
       this.height = this.container.clientHeight;
       this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
-      this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
       this.simulation.force('x').x(this.width / 2);
       this.simulation.force('y').y(this.height / 2);
+      const clusterCenters = this.store.clusterCenters(this.width, this.height);
+      this.simulation.force('cluster', forceCluster(clusterCenters, this._clusterStrength));
     });
     ro.observe(this.container);
   }
@@ -168,13 +188,29 @@ export class GraphRenderer {
       oldPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
     }
 
-    const spread = Math.min(200 + nodes.length * 0.5, 2000);
+    // Compute cluster centers for initial placement and cluster force
+    const clusterCenters = store.clusterCenters(this.width, this.height);
+
+    const spread = Math.min(100 + nodes.length * 0.3, 800);
     const simNodes = nodes.map((n) => {
       const old = oldPositions.get(n.id);
-      n.x = old ? old.x : this.width / 2 + (Math.random() - 0.5) * spread;
-      n.y = old ? old.y : this.height / 2 + (Math.random() - 0.5) * spread;
-      n.vx = old ? old.vx : 0;
-      n.vy = old ? old.vy : 0;
+      if (old) {
+        n.x = old.x;
+        n.y = old.y;
+        n.vx = old.vx;
+        n.vy = old.vy;
+      } else {
+        const center = clusterCenters.get(n.type);
+        if (center) {
+          n.x = center.x + (Math.random() - 0.5) * spread;
+          n.y = center.y + (Math.random() - 0.5) * spread;
+        } else {
+          n.x = this.width / 2 + (Math.random() - 0.5) * spread;
+          n.y = this.height / 2 + (Math.random() - 0.5) * spread;
+        }
+        n.vx = 0;
+        n.vy = 0;
+      }
       return n;
     });
 
@@ -236,7 +272,7 @@ export class GraphRenderer {
       );
 
     // Tune forces for current node count and restart
-    this._tuneForces(simNodes.length);
+    this._tuneForces(simNodes.length, clusterCenters);
     this.simulation.nodes(simNodes);
     this.simulation.force('link').links(linkData);
 
@@ -290,14 +326,24 @@ export class GraphRenderer {
   /*  Force tuning                                                     */
   /* ---------------------------------------------------------------- */
 
-  _tuneForces(nodeCount) {
+  _tuneForces(nodeCount, clusterCenters) {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
 
-    const chargeStrength = -150 + t * 50;
-    const chargeMax = Math.min(600 + t * Math.sqrt(n) * 20, 1200);
-    const linkDist = 80 - t * 55;
-    const gravity = 0.03 * (1 - t * 0.85);
+    // Charge: low repulsion for large graphs — collision force handles
+    // overlap prevention, charge only needs to prevent extreme crowding
+    const chargeStrength = -60 - t * 20;
+    const chargeMax = Math.min(200 + t * Math.sqrt(n) * 8, 400);
+    // Link distance: compact links keep connected nodes close
+    const linkDist = 40 + (1 - t) * 20;
+    // Link strength: weaker for large graphs so cross-type edges
+    // don't pull nodes away from their cluster centers
+    const linkStrength = 0.7 - t * 0.5;
+    // Gravity: minimal — cluster force handles positioning
+    const gravity = 0.005 * (1 - t * 0.5);
+    // Cluster strength: dominant force for large graphs to keep types grouped.
+    const clusterStrength = 0.3 + t * 2.0;
+    this._clusterStrength = clusterStrength;
     const alphaDecay = 0.02 + t * 0.03;
     const theta = n > 2000 ? 2.5 : 0.9;
 
@@ -305,7 +351,8 @@ export class GraphRenderer {
 
     this.simulation
       .force('link')
-        .distance(linkDist);
+        .distance(linkDist)
+        .strength(linkStrength);
     this.simulation
       .force('charge')
         .strength(chargeStrength)
@@ -320,6 +367,8 @@ export class GraphRenderer {
     this.simulation
       .force('y')
         .strength(gravity);
+    this.simulation
+      .force('cluster', forceCluster(clusterCenters, clusterStrength));
     this.simulation
       .alphaDecay(alphaDecay);
   }
