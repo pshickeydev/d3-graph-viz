@@ -65,13 +65,13 @@ export class GraphRenderer {
     // Zoom container
     this.g = this.svg.append('g');
 
-    const zoom = d3.zoom()
-      .scaleExtent([0.05, 8])
+    this._zoom = d3.zoom()
+      .scaleExtent([0.01, 8])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
       });
 
-    this.svg.call(zoom);
+    this.svg.call(this._zoom);
 
     this.svg.on('click', (event) => {
       if (event.target.tagName === 'svg' || event.target.tagName === 'rect') {
@@ -244,20 +244,39 @@ export class GraphRenderer {
     // arrives close to settled before the first visible frame.
     const newCount = simNodes.length - oldPositions.size;
     if (newCount > 100) {
-      const ticks = Math.min(Math.round(80 + Math.sqrt(newCount) * 12), 500);
-      const CHUNK = 60;
+      const overlay = this.container.querySelector('#loading-overlay');
+      if (overlay) overlay.classList.remove('hidden');
+
+      const TARGET_MS = 5000;
+      const MAX_TICKS = 500;
+      const CHUNK = 20;
       let done = 0;
       const gen = ++this._preTickId;
+      const t0 = performance.now();
       this.simulation.alpha(1).stop();
+      const collisionForce = this.simulation.force('collision');
+      this.simulation.force('collision', null);
       const runChunk = () => {
         if (gen !== this._preTickId) return;
-        const end = Math.min(done + CHUNK, ticks);
-        for (let i = done; i < end; i++) this.simulation.tick();
-        done = end;
-        if (done < ticks) {
+        const chunkStart = performance.now();
+        let i = done;
+        const end = Math.min(done + CHUNK, MAX_TICKS);
+        while (i < end && (performance.now() - t0) < TARGET_MS) {
+          this.simulation.tick();
+          i++;
+        }
+        done = i;
+        if (done < MAX_TICKS && (performance.now() - t0) < TARGET_MS) {
           requestAnimationFrame(runChunk);
         } else {
+          this.simulation.force('collision', collisionForce);
           this._tick();
+          if (overlay) overlay.classList.add('hidden');
+          if (typeof window !== 'undefined') {
+            window.__preTickMs = performance.now() - t0;
+            window.__preTickTicks = done;
+          }
+          this.fitToView();
           this.simulation.alpha(0.2).restart();
         }
       };
@@ -276,10 +295,11 @@ export class GraphRenderer {
     const t = Math.min(n / 500, 1);
 
     const chargeStrength = -150 + t * 50;
-    const chargeMax = 600 + t * Math.sqrt(n) * 20;
+    const chargeMax = Math.min(600 + t * Math.sqrt(n) * 20, 1200);
     const linkDist = 80 - t * 55;
     const gravity = 0.03 * (1 - t * 0.85);
     const alphaDecay = 0.02 + t * 0.03;
+    const theta = n > 2000 ? 2.5 : 0.9;
 
     const labelPad = this.showLabels ? 12 : 4;
 
@@ -289,7 +309,8 @@ export class GraphRenderer {
     this.simulation
       .force('charge')
         .strength(chargeStrength)
-        .distanceMax(chargeMax);
+        .distanceMax(chargeMax)
+        .theta(theta);
     this.simulation
       .force('collision')
         .radius((d) => this.store.nodeRadius(d) + labelPad);
@@ -358,6 +379,38 @@ export class GraphRenderer {
         .attr('x', (d) => d.x)
         .attr('y', (d) => d.y);
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Fit to view                                                      */
+  /* ---------------------------------------------------------------- */
+
+  fitToView(padding = 60) {
+    const nodes = this.simulation.nodes();
+    if (!nodes.length) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+
+    const bw = maxX - minX;
+    const bh = maxY - minY;
+    const scale = Math.min(
+      (this.width - padding * 2) / bw,
+      (this.height - padding * 2) / bh,
+      8,
+    );
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const tx = this.width / 2 - cx * scale;
+    const ty = this.height / 2 - cy * scale;
+
+    const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    this.svg.transition().duration(400).call(this._zoom.transform, t);
   }
 
   /* ---------------------------------------------------------------- */

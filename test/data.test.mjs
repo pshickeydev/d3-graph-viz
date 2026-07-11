@@ -221,7 +221,8 @@ describe('toggleExpand', () => {
   test('collapses a node and its descendants recursively', () => {
     const { store } = createStore(100, 100);
     store.expandAll();
-    const rootId = 'n0';
+    const parents = [...store.childrenOf.keys()];
+    const rootId = parents[0];
     store.toggleExpand(rootId);
     assert.ok(!store.expanded.has(rootId));
     const children = store.childrenOf.get(rootId) || [];
