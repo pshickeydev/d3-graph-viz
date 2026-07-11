@@ -191,7 +191,7 @@ export class GraphRenderer {
     // Compute cluster centers for initial placement and cluster force
     const clusterCenters = store.clusterCenters(this.width, this.height);
 
-    const spread = Math.min(100 + nodes.length * 0.3, 800);
+    const spread = Math.min(50 + nodes.length * 0.15, 400);
     const simNodes = nodes.map((n) => {
       const old = oldPositions.get(n.id);
       if (old) {
@@ -313,7 +313,7 @@ export class GraphRenderer {
             window.__preTickTicks = done;
           }
           this.fitToView();
-          this.simulation.alpha(0.2).restart();
+          this.simulation.alpha(0.1).restart();
         }
       };
       requestAnimationFrame(runChunk);
@@ -330,21 +330,24 @@ export class GraphRenderer {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
 
-    // Charge: low repulsion for large graphs — collision force handles
-    // overlap prevention, charge only needs to prevent extreme crowding
-    const chargeStrength = -60 - t * 20;
-    const chargeMax = Math.min(200 + t * Math.sqrt(n) * 8, 400);
+    // Charge: moderate repulsion — enough to prevent overlap and keep
+    // clusters from collapsing, but not so much it scatters nodes
+    const chargeStrength = -80 - t * 30;
+    const chargeMax = Math.min(250 + t * Math.sqrt(n) * 8, 500);
     // Link distance: compact links keep connected nodes close
     const linkDist = 40 + (1 - t) * 20;
     // Link strength: weaker for large graphs so cross-type edges
     // don't pull nodes away from their cluster centers
     const linkStrength = 0.7 - t * 0.5;
     // Gravity: minimal — cluster force handles positioning
-    const gravity = 0.005 * (1 - t * 0.5);
-    // Cluster strength: dominant force for large graphs to keep types grouped.
-    const clusterStrength = 0.3 + t * 2.0;
+    const gravity = 0.01 * (1 - t * 0.5);
+    // Cluster strength: gentle enough to let the simulation settle.
+    // Initial placement already puts nodes near their cluster center,
+    // so the force only needs to maintain grouping during relaxation.
+    const clusterStrength = 0.04 + t * 0.16;
     this._clusterStrength = clusterStrength;
-    const alphaDecay = 0.02 + t * 0.03;
+    const alphaDecay = 0.03 + t * 0.06;
+    const velocityDecay = 0.4 + t * 0.35;
     const theta = n > 2000 ? 2.5 : 0.9;
 
     const labelPad = this.showLabels ? 12 : 4;
@@ -370,7 +373,8 @@ export class GraphRenderer {
     this.simulation
       .force('cluster', forceCluster(clusterCenters, clusterStrength));
     this.simulation
-      .alphaDecay(alphaDecay);
+      .alphaDecay(alphaDecay)
+      .velocityDecay(velocityDecay);
   }
 
   /* ---------------------------------------------------------------- */
