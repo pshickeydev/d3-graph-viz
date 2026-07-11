@@ -184,10 +184,10 @@ export class GraphStore {
 
     const levels = Math.max(this.typeList.length - 1, 1);
     const maxR = 24, minR = 4;
-    const maxA = maxR * maxR, minA = minR * minR;
     this._typeBaseRadius.clear();
     for (let i = 0; i < this.typeList.length; i++) {
-      this._typeBaseRadius.set(this.typeList[i], Math.sqrt(maxA - ((maxA - minA) * i) / levels));
+      const frac = i / levels;
+      this._typeBaseRadius.set(this.typeList[i], maxR * Math.pow(minR / maxR, frac));
     }
   }
 

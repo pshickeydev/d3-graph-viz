@@ -216,13 +216,21 @@ export class GraphRenderer {
         n.vx = old.vx;
         n.vy = old.vy;
       } else {
-        const center = clusterCenters.get(n.type);
-        if (center) {
-          n.x = center.x + (Math.random() - 0.5) * spread;
-          n.y = center.y + (Math.random() - 0.5) * spread;
+        const parents = store.parentsOf.get(n.id) || [];
+        const parentPos = parents.length > 0 ? oldPositions.get(parents[0]) : null;
+        if (parentPos) {
+          const jitter = Math.min(40 + nodes.length * 0.05, 120);
+          n.x = parentPos.x + (Math.random() - 0.5) * jitter;
+          n.y = parentPos.y + (Math.random() - 0.5) * jitter;
         } else {
-          n.x = this.width / 2 + (Math.random() - 0.5) * spread;
-          n.y = this.height / 2 + (Math.random() - 0.5) * spread;
+          const center = clusterCenters.get(n.type);
+          if (center) {
+            n.x = center.x + (Math.random() - 0.5) * spread;
+            n.y = center.y + (Math.random() - 0.5) * spread;
+          } else {
+            n.x = this.width / 2 + (Math.random() - 0.5) * spread;
+            n.y = this.height / 2 + (Math.random() - 0.5) * spread;
+          }
         }
         n.vx = 0;
         n.vy = 0;
@@ -369,24 +377,14 @@ export class GraphRenderer {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
 
-    // Charge: moderate repulsion — enough to prevent overlap and keep
-    // clusters from collapsing, but not so much it scatters nodes
-    const chargeStrength = -80 - t * 30;
-    const chargeMax = Math.min(250 + t * Math.sqrt(n) * 8, 500);
-    // Link distance: compact links keep connected nodes close
-    const linkDist = 40 + (1 - t) * 20;
-    // Link strength: weaker for large graphs so cross-type edges
-    // don't pull nodes away from their cluster centers
-    const linkStrength = 0.7 - t * 0.5;
-    // Gravity: minimal — cluster force handles positioning
-    const gravity = 0.01 * (1 - t * 0.5);
-    // Cluster strength: gentle enough to let the simulation settle.
-    // Initial placement already puts nodes near their cluster center,
-    // so the force only needs to maintain grouping during relaxation.
-    const clusterStrength = 0.04 + t * 0.16;
+    const chargeStrength = -60 - t * 60;
+    const chargeMax = 300 + t * 200;
+    const linkDist = 30 + (1 - t) * 30;
+    const gravity = 0.03 * (1 - t * 0.6);
+    const clusterStrength = t * 0.06;
     this._clusterStrength = clusterStrength;
-    const alphaDecay = 0.03 + t * 0.06;
-    const velocityDecay = 0.4 + t * 0.35;
+    const alphaDecay = 0.02 + t * 0.04;
+    const velocityDecay = 0.35 + t * 0.3;
     const theta = n > 2000 ? 2.5 : 0.9;
 
     const labelPad = this.showLabels ? 12 : 4;
@@ -394,7 +392,7 @@ export class GraphRenderer {
     this.simulation
       .force('link')
         .distance(linkDist)
-        .strength(linkStrength);
+        .strength(null);
     this.simulation
       .force('charge')
         .strength(chargeStrength)
@@ -450,7 +448,7 @@ export class GraphRenderer {
         return (src === nodeId || tgt === nodeId) ? 0.8 : 0.05;
       });
     this._labelSel && this._labelSel
-      .attr('display', null)
+      .each(function () { this.removeAttribute('display'); })
       .attr('opacity', (d) => connected.has(d.id) ? 1 : 0.1);
   }
 
@@ -466,16 +464,15 @@ export class GraphRenderer {
 
     if (this._highlightedId) return;
 
-    const minScreenR = n > 500 ? 18
-      : n > 100 ? 14
-      : n > 30 ? 10
-      : 6;
+    const minScreenR = n > 15 ? 20 / scale : 6 / scale;
 
     this._labelSel.each(function (d) {
       const r = store.nodeRadius(d);
-      const screenR = r * scale;
-      const visible = screenR >= minScreenR;
-      this.setAttribute('display', visible ? null : 'none');
+      if (r >= minScreenR) {
+        this.removeAttribute('display');
+      } else {
+        this.setAttribute('display', 'none');
+      }
     });
   }
 
