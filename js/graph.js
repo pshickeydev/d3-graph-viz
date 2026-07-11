@@ -42,6 +42,7 @@ export class GraphRenderer {
     this._labelSel = null;
     this._highlightedId = null;
     this.showLabels = true;
+    this._preTickId = 0;
 
     this._init();
   }
@@ -159,24 +160,22 @@ export class GraphRenderer {
       _raw: e,
     }));
 
-    // Preserve existing positions
+    // Preserve existing positions from the simulation's internal node array
+    const simOld = this.simulation.nodes();
     const oldPositions = new Map();
-    if (this._nodeSel) {
-      this._nodeSel.each(function (d) {
-        oldPositions.set(d.id, { x: d.x, y: d.y, vx: d.vx, vy: d.vy });
-      });
+    for (let i = 0; i < simOld.length; i++) {
+      const n = simOld[i];
+      oldPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
     }
 
     const spread = Math.min(200 + nodes.length * 0.5, 2000);
     const simNodes = nodes.map((n) => {
       const old = oldPositions.get(n.id);
-      return {
-        ...n,
-        x: old ? old.x : this.width / 2 + (Math.random() - 0.5) * spread,
-        y: old ? old.y : this.height / 2 + (Math.random() - 0.5) * spread,
-        vx: old ? old.vx : 0,
-        vy: old ? old.vy : 0,
-      };
+      n.x = old ? old.x : this.width / 2 + (Math.random() - 0.5) * spread;
+      n.y = old ? old.y : this.height / 2 + (Math.random() - 0.5) * spread;
+      n.vx = old ? old.vx : 0;
+      n.vy = old ? old.vy : 0;
+      return n;
     });
 
     // --- Links ---
@@ -246,12 +245,23 @@ export class GraphRenderer {
     const newCount = simNodes.length - oldPositions.size;
     if (newCount > 100) {
       const ticks = Math.min(Math.round(80 + Math.sqrt(newCount) * 12), 500);
+      const CHUNK = 60;
+      let done = 0;
+      const gen = ++this._preTickId;
       this.simulation.alpha(1).stop();
-      requestAnimationFrame(() => {
-        for (let i = 0; i < ticks; i++) this.simulation.tick();
-        this._tick();
-        this.simulation.alpha(0.2).restart();
-      });
+      const runChunk = () => {
+        if (gen !== this._preTickId) return;
+        const end = Math.min(done + CHUNK, ticks);
+        for (let i = done; i < end; i++) this.simulation.tick();
+        done = end;
+        if (done < ticks) {
+          requestAnimationFrame(runChunk);
+        } else {
+          this._tick();
+          this.simulation.alpha(0.2).restart();
+        }
+      };
+      requestAnimationFrame(runChunk);
     } else {
       this.simulation.alpha(0.6).restart();
     }

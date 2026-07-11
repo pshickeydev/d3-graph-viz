@@ -70,6 +70,9 @@ trailmark-d3-viz/
 │   ├── graph.js        # D3 force simulation, render, zoom/pan
 │   ├── data.js         # Parse/validate JSON, adjacency, expand/collapse
 │   └── ui.js           # Sidebar, search, filters, tooltips, stats bar
+├── test/
+│   ├── data.test.mjs   # GraphStore unit tests
+│   └── graph-gen.mjs   # Synthetic graph generator for tests
 ├── README.md
 └── AGENTS.md
 ```
@@ -79,6 +82,15 @@ trailmark-d3-viz/
 - **D3.js v7** loaded from CDN — no build step required
 - Vanilla ES modules — no framework, no bundler
 - Single `index.html` entry point
+- Unit tests: Node.js built-in test runner
+
+## Running Tests
+
+```bash
+node --test test/data.test.mjs
+```
+
+76 tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, and nodeRadius — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs. No browser required.
 
 ## License
 

@@ -59,6 +59,16 @@ No install step. No dependencies beyond a browser and D3 CDN.
 
 ## Testing
 
+### Data layer (no browser)
+Run GraphStore unit tests with Node's built-in test runner:
+
+```bash
+node --test test/data.test.mjs
+```
+
+Tests exercise validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, and nodeRadius. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+
+### Visual (browser required)
 Use Playwright MCP to load the page, drop a JSON file, and verify the graph renders.
 
 ## Conventions

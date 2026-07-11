@@ -126,6 +126,8 @@ export class GraphStore {
 
     /** Auto-assigned dash pattern per edge rel. @type {Map<string, string|null>} */
     this.relDashes = new Map();
+    /** @type {Map<string, number>} cached base radius per type */
+    this._typeBaseRadius = new Map();
   }
 
   /* ---------------------------------------------------------------- */
@@ -146,6 +148,7 @@ export class GraphStore {
     this.edgesFrom.clear();
     this.edgesTo.clear();
     this.expanded.clear();
+    this._typeBaseRadius.clear();
 
     // Index nodes
     for (const n of json.nodes) {
@@ -175,6 +178,14 @@ export class GraphStore {
     this._deriveRelInfo();
 
     this.enabledTypes = new Set(this.typeList);
+
+    const levels = Math.max(this.typeList.length - 1, 1);
+    const maxR = 24, minR = 4;
+    const maxA = maxR * maxR, minA = minR * minR;
+    this._typeBaseRadius.clear();
+    for (let i = 0; i < this.typeList.length; i++) {
+      this._typeBaseRadius.set(this.typeList[i], Math.sqrt(maxA - ((maxA - minA) * i) / levels));
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -231,8 +242,9 @@ export class GraphStore {
       }
     }
 
-    while (queue.length > 0) {
-      const { id, depth } = queue.shift();
+    let queuePtr = 0;
+    while (queuePtr < queue.length) {
+      const { id, depth } = queue[queuePtr++];
       if (visited.has(id)) continue;
       visited.add(id);
 
@@ -355,13 +367,17 @@ export class GraphStore {
 
   /** Recursively collapse a node and all its descendants. */
   _collapseRecursive(nodeId) {
-    this.expanded.delete(nodeId);
-    const node = this.nodeMap.get(nodeId);
-    if (node) node.expanded = false;
-    const children = this.childrenOf.get(nodeId) || [];
-    for (const cid of children) {
-      if (this.expanded.has(cid)) {
-        this._collapseRecursive(cid);
+    const stack = [nodeId];
+    while (stack.length > 0) {
+      const id = stack.pop();
+      this.expanded.delete(id);
+      const node = this.nodeMap.get(id);
+      if (node) node.expanded = false;
+      const children = this.childrenOf.get(id) || [];
+      for (const cid of children) {
+        if (this.expanded.has(cid)) {
+          stack.push(cid);
+        }
       }
     }
   }
@@ -382,16 +398,18 @@ export class GraphStore {
    */
   getVisible() {
     const visibleIds = new Set();
+    const expanded = this.expanded;
+    const enabled = this.enabledTypes;
 
     for (const [id, node] of this.nodeMap) {
-      if (!this.enabledTypes.has(node.type)) continue;
+      if (!enabled.has(node.type)) continue;
 
       const parents = this.parentsOf.get(id);
       if (!parents || parents.length === 0) {
         if (this.rootTypes.has(node.type)) {
           visibleIds.add(id);
         }
-      } else if (parents.some((pid) => this.expanded.has(pid))) {
+      } else if (parents.some((pid) => expanded.has(pid))) {
         visibleIds.add(id);
       }
     }
@@ -443,8 +461,9 @@ export class GraphStore {
     const ancestors = [];
     const visited = new Set();
     const queue = [nodeId];
-    while (queue.length > 0) {
-      const current = queue.shift();
+    let ptr = 0;
+    while (ptr < queue.length) {
+      const current = queue[ptr++];
       if (visited.has(current)) continue;
       visited.add(current);
       const parents = this.parentsOf.get(current) || [];
@@ -484,21 +503,15 @@ export class GraphStore {
 
   /**
    * Compute node radius based on its position in the type hierarchy
-   * and its child count.
+   * and its child count. Uses pre-computed base radius per type.
    * @param {GraphNode} node
    * @returns {number}
    */
   nodeRadius(node) {
-    const idx = this.typeList.indexOf(node.type);
-    const depth = idx === -1 ? this.typeList.length : idx;
-    const maxR = 24;
-    const minR = 4;
-    const levels = Math.max(this.typeList.length - 1, 1);
-    const maxA = maxR * maxR;
-    const minA = minR * minR;
-    const baseA = maxA - ((maxA - minA) * depth) / levels;
+    const base = this._typeBaseRadius.get(node.type);
+    if (base === undefined) return 4;
     const extraA = Math.min(node.childCount || 0, 64);
-    return Math.sqrt(baseA + extraA);
+    return Math.sqrt(base * base + extraA);
   }
 
   /**
