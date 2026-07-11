@@ -11,6 +11,15 @@
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function _truncateLabel(text, max) {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + '…';
+}
+
+/* ------------------------------------------------------------------ */
 /*  Cluster force — pulls each node toward its type's cluster center    */
 /* ------------------------------------------------------------------ */
 
@@ -62,6 +71,8 @@ export class GraphRenderer {
     this.showLabels = true;
     this._preTickId = 0;
     this._clusterStrength = 0;
+    this._zoomScale = 1;
+    this._visibleNodeCount = 0;
 
     this._init();
   }
@@ -88,6 +99,11 @@ export class GraphRenderer {
       .scaleExtent([0.01, 8])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
+        const prevScale = this._zoomScale;
+        this._zoomScale = event.transform.k;
+        if (Math.abs(event.transform.k - prevScale) / (prevScale || 1) > 0.05) {
+          this._updateLabelVisibility();
+        }
       });
 
     this.svg.call(this._zoom);
@@ -215,19 +231,31 @@ export class GraphRenderer {
     });
 
     // --- Links ---
+    this._visibleNodeCount = simNodes.length;
+    const edgeOpacity = simNodes.length > 500 ? 0.12
+      : simNodes.length > 200 ? 0.2
+      : simNodes.length > 50 ? 0.35
+      : 0.5;
+    const edgeWidth = simNodes.length > 500 ? 0.6
+      : simNodes.length > 100 ? 0.8
+      : 1.2;
+    const showArrows = simNodes.length <= 300;
     this._linkSel = this.g.select('.links')
       .selectAll('line')
       .data(linkData, (d) => `${d.source?.id || d.source}-${d.target?.id || d.target}`)
       .join(
         (enter) => enter.append('line')
           .attr('stroke', (d) => store.colorForRel(d.rel))
-          .attr('stroke-width', 1.2)
+          .attr('stroke-width', edgeWidth)
           .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
-          .attr('stroke-opacity', 0.5)
-          .attr('marker-end', (d) => `url(#arrow-${CSS.escape(d.rel)})`),
+          .attr('stroke-opacity', edgeOpacity)
+          .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (update) => update
           .attr('stroke', (d) => store.colorForRel(d.rel))
-          .attr('stroke-dasharray', (d) => store.dashForRel(d.rel)),
+          .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
+          .attr('stroke-opacity', edgeOpacity)
+          .attr('stroke-width', edgeWidth)
+          .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (exit) => exit.remove(),
       );
 
@@ -239,8 +267,8 @@ export class GraphRenderer {
         (enter) => enter.append('circle')
           .attr('r', (d) => store.nodeRadius(d))
           .attr('fill', (d) => store.colorForType(d.type))
-          .attr('stroke', '#1e293b')
-          .attr('stroke-width', 1.5)
+          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
+          .attr('stroke-width', (d) => d.expanded ? 2 : 1.5)
           .attr('cursor', 'pointer')
           .call(this._drag())
           .on('click', (_event, d) => this.onNodeClick(d))
@@ -248,28 +276,39 @@ export class GraphRenderer {
           .on('mouseleave', (_event, d) => this.onNodeHoverOut(d)),
         (update) => update
           .attr('r', (d) => store.nodeRadius(d))
-          .attr('fill', (d) => store.colorForType(d.type)),
+          .attr('fill', (d) => store.colorForType(d.type))
+          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
+          .attr('stroke-width', (d) => d.expanded ? 2 : 1.5),
         (exit) => exit.remove(),
       );
 
-    // --- Labels (only for larger nodes) ---
-    const labelData = this.showLabels
-      ? simNodes.filter((n) => store.nodeRadius(n) >= 10)
-      : [];
+    // --- Labels ---
+    // Create labels for the most prominent nodes, capped to avoid
+    // DOM bloat on very large graphs.  Zoom-dependent display toggling
+    // hides labels at low zoom levels to reduce visual clutter.
+    const MAX_LABELS = 500;
+    let labelData = [];
+    if (this.showLabels) {
+      labelData = simNodes.slice().sort(
+        (a, b) => store.nodeRadius(b) - store.nodeRadius(a),
+      ).slice(0, MAX_LABELS);
+    }
     this._labelSel = this.g.select('.labels')
       .selectAll('text')
       .data(labelData, (d) => d.id)
       .join(
         (enter) => enter.append('text')
-          .text((d) => d.label || d.id)
+          .text((d) => _truncateLabel(d.label || d.id, 24))
           .attr('font-size', (d) => Math.max(9, store.nodeRadius(d) * 0.7))
           .attr('text-anchor', 'middle')
           .attr('dy', (d) => store.nodeRadius(d) + 14)
           .attr('fill', '#e2e8f0')
           .attr('pointer-events', 'none'),
-        (update) => update.text((d) => d.label || d.id),
+        (update) => update
+          .text((d) => _truncateLabel(d.label || d.id, 24)),
         (exit) => exit.remove(),
       );
+    this._updateLabelVisibility();
 
     // Tune forces for current node count and restart
     this._tuneForces(simNodes.length, clusterCenters);
@@ -391,8 +430,12 @@ export class GraphRenderer {
     this._highlightedId = nodeId;
     if (!nodeId) {
       this._nodeSel && this._nodeSel.attr('opacity', 1);
-      this._linkSel && this._linkSel.attr('stroke-opacity', 0.5);
+      const baseOpacity = this._visibleNodeCount > 500 ? 0.12
+        : this._visibleNodeCount > 200 ? 0.2
+        : this._visibleNodeCount > 50 ? 0.35 : 0.5;
+      this._linkSel && this._linkSel.attr('stroke-opacity', baseOpacity);
       this._labelSel && this._labelSel.attr('opacity', 1);
+      this._updateLabelVisibility();
       return;
     }
     const connected = connectedIds || new Set();
@@ -407,7 +450,33 @@ export class GraphRenderer {
         return (src === nodeId || tgt === nodeId) ? 0.8 : 0.05;
       });
     this._labelSel && this._labelSel
+      .attr('display', null)
       .attr('opacity', (d) => connected.has(d.id) ? 1 : 0.1);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Label visibility (zoom-dependent)                                */
+  /* ---------------------------------------------------------------- */
+
+  _updateLabelVisibility() {
+    if (!this._labelSel || !this.showLabels) return;
+    const scale = this._zoomScale;
+    const n = this._visibleNodeCount;
+    const store = this.store;
+
+    if (this._highlightedId) return;
+
+    const minScreenR = n > 500 ? 18
+      : n > 100 ? 14
+      : n > 30 ? 10
+      : 6;
+
+    this._labelSel.each(function (d) {
+      const r = store.nodeRadius(d);
+      const screenR = r * scale;
+      const visible = screenR >= minScreenR;
+      this.setAttribute('display', visible ? null : 'none');
+    });
   }
 
   /* ---------------------------------------------------------------- */

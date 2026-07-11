@@ -11,19 +11,19 @@
 
 const PALETTE = [
   '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#3b82f6', // blue
-  '#06b6d4', // cyan
-  '#14b8a6', // teal
   '#f59e0b', // amber
   '#10b981', // emerald
   '#ef4444', // red
-  '#ec4899', // pink
-  '#f97316', // orange
-  '#84cc16', // lime
+  '#06b6d4', // cyan
   '#a855f7', // purple
-  '#22d3ee', // sky
+  '#f97316', // orange
+  '#3b82f6', // blue
+  '#ec4899', // pink
+  '#84cc16', // lime
+  '#8b5cf6', // violet
+  '#14b8a6', // teal
   '#facc15', // yellow
+  '#22d3ee', // sky
   '#fb923c', // light-orange
   '#4ade80', // light-green
 ];
@@ -128,6 +128,8 @@ export class GraphStore {
     this.relDashes = new Map();
     /** @type {Map<string, number>} cached base radius per type */
     this._typeBaseRadius = new Map();
+    /** @type {Map<string, number>} cached node count per type */
+    this._typeCounts = new Map();
   }
 
   /* ---------------------------------------------------------------- */
@@ -149,6 +151,7 @@ export class GraphStore {
     this.edgesTo.clear();
     this.expanded.clear();
     this._typeBaseRadius.clear();
+    this._typeCounts.clear();
 
     // Index nodes
     for (const n of json.nodes) {
@@ -263,6 +266,42 @@ export class GraphStore {
       }
     }
 
+    // Non-root types whose nodes all landed at depth 0 have reversed
+    // edge direction (e.g. crew→vessel).  Infer their depth from the
+    // average depth of the types they connect to, so they sort after
+    // their neighbours rather than appearing alongside true roots.
+    for (const [type, count] of typeCounts) {
+      if (this.rootTypes.has(type)) continue;
+      const avg = (typeDepthSum.get(type) || 0) / (typeDepthCount.get(type) || 1);
+      if (avg > 0) continue;
+      let neighborDepthSum = 0;
+      let neighborCount = 0;
+      for (const [id, node] of this.nodeMap) {
+        if (node.type !== type) continue;
+        for (const e of (this.edgesFrom.get(id) || [])) {
+          const target = this.nodeMap.get(e.to);
+          if (target && target.type !== type) {
+            const tAvg = (typeDepthSum.get(target.type) || 0) / (typeDepthCount.get(target.type) || 1);
+            neighborDepthSum += tAvg;
+            neighborCount++;
+          }
+        }
+        for (const e of (this.edgesTo.get(id) || [])) {
+          const source = this.nodeMap.get(e.from);
+          if (source && source.type !== type) {
+            const sAvg = (typeDepthSum.get(source.type) || 0) / (typeDepthCount.get(source.type) || 1);
+            neighborDepthSum += sAvg;
+            neighborCount++;
+          }
+        }
+      }
+      if (neighborCount > 0) {
+        const inferredDepth = neighborDepthSum / neighborCount + 1;
+        typeDepthSum.set(type, inferredDepth * count);
+        typeDepthCount.set(type, count);
+      }
+    }
+
     // Sort types: lowest average depth first (roots), then by count descending
     const allTypes = [...typeCounts.keys()];
     allTypes.sort((a, b) => {
@@ -273,6 +312,7 @@ export class GraphStore {
     });
 
     this.typeList = allTypes;
+    this._typeCounts = typeCounts;
 
     // Assign colours round-robin from palette
     this.typeColors = new Map();
@@ -485,6 +525,11 @@ export class GraphStore {
   /* ---------------------------------------------------------------- */
   /*  Queries                                                          */
   /* ---------------------------------------------------------------- */
+
+  /** Get count of nodes for a given type. */
+  countForType(type) {
+    return this._typeCounts.get(type) || 0;
+  }
 
   /** Get colour for a node type. */
   colorForType(type) {

@@ -311,6 +311,13 @@ html, body {
   flex-shrink: 0;
 }
 
+.filter-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Detail panel                                                       */
 /* ------------------------------------------------------------------ */

@@ -59,6 +59,7 @@ export function renderTypeFilters(el, store, onChange) {
   el.innerHTML = '';
   for (const type of store.typeList) {
     const color = store.colorForType(type);
+    const count = store.countForType(type);
     const checked = store.enabledTypes.has(type) ? 'checked' : '';
 
     const label = document.createElement('label');
@@ -67,6 +68,7 @@ export function renderTypeFilters(el, store, onChange) {
       <input type="checkbox" data-type="${escapeHtml(type)}" ${checked}>
       <span class="filter-dot" style="background:${color}"></span>
       ${escapeHtml(type)}
+      <span class="filter-count">${count.toLocaleString()}</span>
     `;
     label.querySelector('input').addEventListener('change', (e) => {
       onChange(type, e.target.checked);
