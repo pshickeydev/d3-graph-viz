@@ -12,7 +12,7 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 |---|---|
 | `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping |
 | `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), pulls all visual config from `GraphStore` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts), attr selectors (colour-by / size-by dropdowns), search wiring, tooltip, detail sidebar |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour legend (gradient bar or categorical swatches, all editable), search wiring, tooltip, detail sidebar |
 | `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell, loads D3 v7 from CDN, imports `main.js` as ES module |
@@ -71,7 +71,7 @@ Run GraphStore unit tests with Node's built-in test runner:
 node --test test/data.test.mjs
 ```
 
-95 tests total — 81 covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds; 14 covering attribute discovery, colour-by-attr, size-by-attr, node opacity, and edge weight. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+103 tests total — 81 covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds; 14 covering attribute discovery, colour-by-attr, size-by-attr, node opacity, and edge weight; 8 covering colour overrides (type, rel, categorical, heat ramp) and legend data. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
 
 A 9.6K-node test fixture is available at `test/fixtures/sample-large-graph.json` for visual testing.
 
@@ -81,7 +81,7 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 ## Conventions
 
 - Dark theme with slate/indigo palette (see CSS custom properties)
-- Node colors auto-assigned from a 16-colour palette in `data.js` (ordered for maximum perceptual contrast between adjacent types) — accessed via `store.colorForType()`. When an attr mapping is active, `store.nodeColor()` returns the attr-driven colour instead; `store.nodeOpacity()` fades nodes missing the active attr.
+- Node colors auto-assigned from a 16-colour palette in `data.js` (ordered for maximum perceptual contrast between adjacent types) — accessed via `store.colorForType()`. Users can override any type or rel colour via inline colour pickers; overrides are stored in the same Maps and take effect immediately. When an attr mapping is active, `store.nodeColor()` returns the attr-driven colour instead; `store.nodeOpacity()` fades nodes missing the active attr.
 - Node sizes computed by `store.nodeRadius()` using exponential decay across the type hierarchy (roots largest, leaves smallest) plus a child-count area bonus. When a size attr is active, radius derives from the attr value with sqrt scaling.
 - Edge colors/dashes auto-assigned from palettes in `data.js` — accessed via `store.colorForRel()` / `store.dashForRel()`. Edge stroke width and opacity also scale via `store.edgeWeight()` when an attr mapping is active.
 - Expanded nodes have a light stroke to distinguish them from collapsed nodes

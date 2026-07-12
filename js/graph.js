@@ -161,7 +161,8 @@ export class GraphRenderer {
     const defs = this.svg.select('defs');
     for (const rel of this.store.relList) {
       const id = `arrow-${CSS.escape(rel)}`;
-      if (defs.select(`#${CSS.escape(id)}`).empty()) {
+      const existing = defs.select(`#${CSS.escape(id)}`);
+      if (existing.empty()) {
         defs.append('marker')
           .attr('id', id)
           .attr('viewBox', '0 -5 10 10')
@@ -174,6 +175,8 @@ export class GraphRenderer {
           .attr('d', 'M0,-5L10,0L0,5')
           .attr('fill', this.store.colorForRel(rel))
           .attr('opacity', 0.6);
+      } else {
+        existing.select('path').attr('fill', this.store.colorForRel(rel));
       }
     }
   }

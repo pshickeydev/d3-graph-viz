@@ -8,6 +8,7 @@ import {
   renderStats,
   renderTypeFilters,
   renderAttrSelectors,
+  renderColorLegend,
   wireSearch,
   showTooltip,
   hideTooltip,
@@ -29,6 +30,7 @@ const searchRes = $('#search-results');
 const detail    = $('#detail-panel');
 const tooltip   = $('#tooltip');
 const attrSel   = $('#attr-selectors');
+const legend    = $('#color-legend');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const toggleLabels   = $('#toggle-labels input');
@@ -112,9 +114,14 @@ function loadGraph(json) {
     }
     refreshGraph();
   }
-  renderTypeFilters(filters, store, onTypeFilterChange);
+  renderTypeFilters(filters, store, onTypeFilterChange, refreshGraph);
 
-  renderAttrSelectors(attrSel, store, refreshGraph);
+  function onAttrChange() {
+    renderColorLegend(legend, store, refreshGraph);
+    refreshGraph();
+  }
+  renderAttrSelectors(attrSel, store, onAttrChange);
+  renderColorLegend(legend, store, refreshGraph);
 
   btnExpandAll.onclick = () => {
     store.expandAll();

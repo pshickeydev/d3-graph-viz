@@ -162,6 +162,11 @@ export class GraphStore {
     this._attrColorCache = new Map();
     /** @type {Map<string, number>} node-id → computed radius when sizeAttr active */
     this._attrSizeCache = new Map();
+
+    /** User overrides for categorical attr colours. @type {Map<string, string>} */
+    this._catColorOverrides = new Map();
+    /** User overrides for heat ramp stops. @type {string[]|null} */
+    this._heatRampOverride = null;
   }
 
   /* ---------------------------------------------------------------- */
@@ -219,6 +224,8 @@ export class GraphStore {
     this._sizeAttr = null;
     this._attrColorCache.clear();
     this._attrSizeCache.clear();
+    this._catColorOverrides.clear();
+    this._heatRampOverride = null;
 
     const levels = Math.max(this.typeList.length - 1, 1);
     const maxR = 24, minR = 4;
@@ -447,6 +454,8 @@ export class GraphStore {
    */
   setColorAttr(attrKey) {
     this._colorAttr = attrKey;
+    this._catColorOverrides.clear();
+    this._heatRampOverride = null;
     this._rebuildColorCache();
   }
 
@@ -462,6 +471,85 @@ export class GraphStore {
   get colorAttr() { return this._colorAttr; }
   get sizeAttr() { return this._sizeAttr; }
 
+  /**
+   * Set a user override for a type colour.
+   * @param {string} type
+   * @param {string} color — hex colour
+   */
+  setTypeColor(type, color) {
+    this.typeColors.set(type, color);
+  }
+
+  /**
+   * Set a user override for an edge rel colour.
+   * @param {string} rel
+   * @param {string} color — hex colour
+   */
+  setRelColor(rel, color) {
+    this.relColors.set(rel, color);
+  }
+
+  /**
+   * Set a user override for a categorical attr value colour.
+   * @param {string} value — the categorical value
+   * @param {string} color — hex colour
+   */
+  setCatColor(value, color) {
+    this._catColorOverrides.set(value, color);
+    this._rebuildColorCache();
+  }
+
+  /**
+   * Set user override for the numeric heat ramp stops.
+   * @param {number} index — stop index (0 to length-1)
+   * @param {string} color — hex colour
+   */
+  setHeatRampStop(index, color) {
+    if (!this._heatRampOverride) {
+      this._heatRampOverride = [...HEAT_RAMP];
+    }
+    this._heatRampOverride[index] = color;
+    this._rebuildColorCache();
+  }
+
+  /**
+   * Get the active heat ramp (user-overridden or default).
+   * @returns {string[]}
+   */
+  getHeatRamp() {
+    return this._heatRampOverride || HEAT_RAMP;
+  }
+
+  /**
+   * Get the current colour legend data for the active colour mapping.
+   * Returns null when no colour attr is active (use type filters as legend).
+   * @returns {{ kind: string, ... }|null}
+   */
+  getColorLegend() {
+    if (!this._colorAttr) return null;
+    const profile = this.attrProfiles.get(this._colorAttr);
+    if (!profile) return null;
+
+    if (profile.kind === 'numeric') {
+      return {
+        kind: 'numeric',
+        attr: this._colorAttr,
+        min: profile.min,
+        max: profile.max,
+        stops: [...this.getHeatRamp()],
+      };
+    }
+    const entries = profile.values.map((v, i) => ({
+      value: v,
+      color: this._catColorOverrides.get(v) || CATEGORY_PALETTE[i % CATEGORY_PALETTE.length],
+    }));
+    return {
+      kind: 'categorical',
+      attr: this._colorAttr,
+      entries,
+    };
+  }
+
   _rebuildColorCache() {
     this._attrColorCache.clear();
     const attrKey = this._colorAttr;
@@ -471,6 +559,7 @@ export class GraphStore {
     if (!profile) return;
 
     if (profile.kind === 'numeric') {
+      const ramp = this.getHeatRamp();
       const { min, max } = profile;
       const range = max - min || 1;
       for (const node of this.nodeMap.values()) {
@@ -479,14 +568,15 @@ export class GraphStore {
         const num = Number(raw);
         if (isNaN(num)) continue;
         const t = (num - min) / range;
-        const idx = Math.min(Math.floor(t * (HEAT_RAMP.length - 1)), HEAT_RAMP.length - 2);
-        const frac = t * (HEAT_RAMP.length - 1) - idx;
-        this._attrColorCache.set(node.id, _lerpColor(HEAT_RAMP[idx], HEAT_RAMP[idx + 1], frac));
+        const idx = Math.min(Math.floor(t * (ramp.length - 1)), ramp.length - 2);
+        const frac = t * (ramp.length - 1) - idx;
+        this._attrColorCache.set(node.id, _lerpColor(ramp[idx], ramp[idx + 1], frac));
       }
     } else {
       const catColors = new Map();
       for (let i = 0; i < profile.values.length; i++) {
-        catColors.set(profile.values[i], CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]);
+        const v = profile.values[i];
+        catColors.set(v, this._catColorOverrides.get(v) || CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]);
       }
       for (const node of this.nodeMap.values()) {
         const raw = node.attrs?.[attrKey];

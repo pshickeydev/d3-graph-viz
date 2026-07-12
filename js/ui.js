@@ -55,7 +55,7 @@ export function renderStats(el, stats, generated, store) {
  * @param {import('./data.js').GraphStore} store
  * @param {function}    onChange — called with (type, enabled)
  */
-export function renderTypeFilters(el, store, onChange) {
+export function renderTypeFilters(el, store, onChange, onColorChange) {
   el.innerHTML = '';
   for (const type of store.typeList) {
     const color = store.colorForType(type);
@@ -66,13 +66,20 @@ export function renderTypeFilters(el, store, onChange) {
     label.className = 'filter-item';
     label.innerHTML = `
       <input type="checkbox" data-type="${escapeHtml(type)}" ${checked}>
-      <span class="filter-dot" style="background:${color}"></span>
+      <input type="color" class="filter-color" value="${color}" title="Change colour">
       ${escapeHtml(type)}
       <span class="filter-count">${count.toLocaleString()}</span>
     `;
-    label.querySelector('input').addEventListener('change', (e) => {
+    label.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
       onChange(type, e.target.checked);
     });
+    const colorInput = label.querySelector('input[type="color"]');
+    colorInput.addEventListener('input', (e) => {
+      e.stopPropagation();
+      store.setTypeColor(type, e.target.value);
+      if (onColorChange) onColorChange();
+    });
+    colorInput.addEventListener('click', (e) => e.stopPropagation());
     el.appendChild(label);
   }
 }
@@ -235,6 +242,104 @@ export function renderAttrSelectors(el, store, onChange) {
     row.appendChild(select);
     el.appendChild(row);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Colour legend                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render a colour legend for the active colour mapping.
+ * Shows a gradient bar for numeric attrs, or labelled swatches for
+ * categorical attrs. All colours are editable via colour picker inputs.
+ * @param {HTMLElement} el
+ * @param {import('./data.js').GraphStore} store
+ * @param {function}    onChange — called after any colour change
+ */
+export function renderColorLegend(el, store, onChange) {
+  el.innerHTML = '';
+
+  const legend = store.getColorLegend();
+  if (!legend) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden');
+
+  if (legend.kind === 'numeric') {
+    _renderNumericLegend(el, legend, store, onChange);
+  } else {
+    _renderCategoricalLegend(el, legend, store, onChange);
+  }
+}
+
+function _renderNumericLegend(el, legend, store, onChange) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'legend-numeric';
+
+  const gradStr = legend.stops.join(', ');
+  const bar = document.createElement('div');
+  bar.className = 'legend-gradient-bar';
+  bar.style.background = `linear-gradient(to right, ${gradStr})`;
+  wrapper.appendChild(bar);
+
+  const stops = document.createElement('div');
+  stops.className = 'legend-stops';
+  for (let i = 0; i < legend.stops.length; i++) {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.className = 'legend-stop-picker';
+    input.value = legend.stops[i];
+    input.title = `Ramp stop ${i + 1}`;
+    input.addEventListener('input', () => {
+      store.setHeatRampStop(i, input.value);
+      const newStops = store.getHeatRamp();
+      bar.style.background = `linear-gradient(to right, ${newStops.join(', ')})`;
+      onChange();
+    });
+    stops.appendChild(input);
+  }
+  wrapper.appendChild(stops);
+
+  const labels = document.createElement('div');
+  labels.className = 'legend-range-labels';
+  labels.innerHTML = `<span>${_fmtNum(legend.min)}</span><span>${_fmtNum(legend.max)}</span>`;
+  wrapper.appendChild(labels);
+
+  el.appendChild(wrapper);
+}
+
+function _renderCategoricalLegend(el, legend, store, onChange) {
+  const list = document.createElement('div');
+  list.className = 'legend-categorical';
+  for (const entry of legend.entries) {
+    const row = document.createElement('div');
+    row.className = 'legend-cat-item';
+
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.className = 'legend-cat-picker';
+    input.value = entry.color;
+    input.title = entry.value;
+    input.addEventListener('input', () => {
+      store.setCatColor(entry.value, input.value);
+      onChange();
+    });
+
+    const label = document.createElement('span');
+    label.className = 'legend-cat-label';
+    label.textContent = entry.value;
+
+    row.appendChild(input);
+    row.appendChild(label);
+    list.appendChild(row);
+  }
+  el.appendChild(list);
+}
+
+function _fmtNum(n) {
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toFixed(1);
 }
 
 /* ------------------------------------------------------------------ */

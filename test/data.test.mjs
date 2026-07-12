@@ -646,6 +646,87 @@ describe('edgeWeight', () => {
 });
 
 /* ================================================================
+ *  Colour overrides and legend
+ * ================================================================ */
+
+describe('colour overrides', () => {
+  test('setTypeColor overrides type colour', () => {
+    const { store } = createStore(100, 100);
+    const type = store.typeList[0];
+    store.setTypeColor(type, '#ff0000');
+    assert.equal(store.colorForType(type), '#ff0000');
+  });
+
+  test('setRelColor overrides edge rel colour', () => {
+    const { store } = createStore(100, 100);
+    const rel = store.relList[0];
+    store.setRelColor(rel, '#00ff00');
+    assert.equal(store.colorForRel(rel), '#00ff00');
+  });
+
+  test('setCatColor overrides categorical colour and rebuilds cache', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('tier');
+    const legend = store.getColorLegend();
+    const firstVal = legend.entries[0].value;
+    const origColor = legend.entries[0].color;
+    store.setCatColor(firstVal, '#abcdef');
+    const updated = store.getColorLegend();
+    assert.equal(updated.entries[0].color, '#abcdef');
+    assert.notEqual(origColor, '#abcdef');
+  });
+
+  test('setHeatRampStop overrides numeric ramp and rebuilds cache', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('score');
+    store.setHeatRampStop(0, '#000000');
+    const ramp = store.getHeatRamp();
+    assert.equal(ramp[0], '#000000');
+    const legend = store.getColorLegend();
+    assert.equal(legend.stops[0], '#000000');
+  });
+
+  test('setColorAttr resets overrides', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('score');
+    store.setHeatRampStop(0, '#000000');
+    store.setColorAttr('tier');
+    const ramp = store.getHeatRamp();
+    assert.notEqual(ramp[0], '#000000');
+  });
+});
+
+describe('getColorLegend', () => {
+  test('returns null when no colour attr active', () => {
+    const { store } = createStore(100, 100);
+    assert.equal(store.getColorLegend(), null);
+  });
+
+  test('returns numeric legend with stops', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('score');
+    const legend = store.getColorLegend();
+    assert.equal(legend.kind, 'numeric');
+    assert.equal(legend.attr, 'score');
+    assert.ok(legend.stops.length >= 2);
+    assert.equal(legend.min, 0);
+    assert.equal(legend.max, 100);
+  });
+
+  test('returns categorical legend with entries', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('tier');
+    const legend = store.getColorLegend();
+    assert.equal(legend.kind, 'categorical');
+    assert.ok(legend.entries.length >= 2);
+    for (const e of legend.entries) {
+      assert.ok(e.value);
+      assert.ok(e.color.startsWith('#'));
+    }
+  });
+});
+
+/* ================================================================
  *  Size-specific performance & correctness
  * ================================================================ */
 
