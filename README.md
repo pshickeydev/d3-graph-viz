@@ -20,12 +20,15 @@ Interactive force-directed graph visualization for directed graphs, built with [
 
 ## Features
 
-- **Force-directed layout** — nodes arranged by D3 force simulation with zoom/pan
+- **Force-directed layout** — topology-driven clustering where children naturally group around parent nodes, with zoom/pan
 - **Progressive disclosure** — starts with auto-detected root nodes; click to expand children, click again to collapse
-- **Color-coded node types** — colours auto-assigned from a 16-colour palette based on discovered types
-- **Edge styling** — colours and dash patterns auto-assigned per relationship type, with directional arrows
+- **Color-coded node types** — colours auto-assigned from a 16-colour palette (ordered for perceptual contrast)
+- **Scaled node sizes** — exponential radius decay across the type hierarchy makes roots visibly larger than leaves
+- **Edge styling** — colours and dash patterns auto-assigned per relationship type, with directional arrows (arrows hidden for large graphs to reduce clutter)
+- **Adaptive rendering** — edge opacity, stroke width, and label density scale with the number of visible nodes
+- **Zoom-dependent labels** — labels appear progressively as you zoom in; only the most prominent nodes are labelled at overview zoom
 - **Search** — find nodes by label or ID with instant results
-- **Type filters** — toggle node types on/off
+- **Type filters** — toggle node types on/off, with node counts per type
 - **Detail sidebar** — click any node to see full attributes, connections, and links
 - **Tooltip** — hover for quick node summary with key attributes
 - **Highlight** — hover or select a node to dim unrelated nodes and edges
@@ -61,7 +64,7 @@ The viewer accepts any JSON file with a `nodes` array and an `edges` array. All 
 ## Project Structure
 
 ```
-trailmark-d3-viz/
+d3-graph-viz/
 ├── index.html          # Single-page app shell
 ├── css/
 │   └── style.css       # Layout, node/edge colours, sidebar
@@ -72,7 +75,11 @@ trailmark-d3-viz/
 │   └── ui.js           # Sidebar, search, filters, tooltips, stats bar
 ├── test/
 │   ├── data.test.mjs   # GraphStore unit tests
-│   └── graph-gen.mjs   # Synthetic graph generator for tests
+│   ├── expand_all.test.mjs
+│   ├── expand_all_xl.test.mjs
+│   ├── graph-gen.mjs   # Synthetic graph generator for tests
+│   └── fixtures/
+│       └── sample-large-graph.json  # 9.6K-node test fixture
 ├── README.md
 └── AGENTS.md
 ```
@@ -90,7 +97,7 @@ trailmark-d3-viz/
 node --test test/data.test.mjs
 ```
 
-76 tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, and nodeRadius — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs. No browser required.
+81 tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs. No browser required.
 
 ## License
 

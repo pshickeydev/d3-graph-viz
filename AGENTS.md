@@ -10,9 +10,9 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 
 | File | Responsibility |
 |---|---|
-| `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, assigns colours, manages expand/collapse state, computes visible subset, search |
-| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, pulls all visual config from `GraphStore` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters, search wiring, tooltip, detail sidebar |
+| `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()` |
+| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering, pulls all visual config from `GraphStore` |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts), search wiring, tooltip, detail sidebar |
 | `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell, loads D3 v7 from CDN, imports `main.js` as ES module |
@@ -30,7 +30,10 @@ File drop/pick → main.js parses JSON
 ## Key Patterns
 
 - **Fully data-driven**: all type colours, edge colours/dashes, node sizes, root types, and filter lists are derived from the loaded JSON at runtime. Nothing is hardcoded to a specific graph schema.
-- **Progressive disclosure**: only root nodes (auto-detected as the type with fewest parentless nodes) visible initially; click expands children, click again collapses recursively
+- **Progressive disclosure**: only root nodes (auto-detected as the type with fewest parentless nodes) visible initially; click expands children, click again collapses recursively.
+- **Topology-driven layout**: D3's default link strength (inverse of node degree) keeps children clustered around high-degree parent nodes. New nodes are placed near their parent's position. A weak cluster force acts as a tiebreaker only for large graphs.
+- **Zoom-dependent labels**: labels are created for the top 500 nodes by radius, then shown/hidden based on zoom level. Only nodes whose radius exceeds a threshold at the current zoom scale display labels. Labels are truncated at 24 characters.
+- **Adaptive edge rendering**: edge opacity, stroke width, and arrow markers scale with the number of visible nodes to reduce visual noise in large graphs.
 - **D3 module as global**: D3 is loaded via `<script>` tag (not imported), so `d3` is a global. Don't add `import d3` statements.
 - **No build step**: all JS uses native ES module `import`/`export`. No bundler, no transpiler.
 - **State lives in `GraphStore`**: the renderer is stateless — call `update()` with new visible data after any store mutation. Colours and sizes are accessed via `store.colorForType()`, `store.colorForRel()`, `store.nodeRadius()` etc.
@@ -44,7 +47,8 @@ The tool accepts any JSON file with `nodes[]` and `edges[]` arrays:
 - `stats` — optional summary object with `nodes`, `edges`, `by_type`, `by_rel` counts
 - `generated` — optional date string
 
-Node types: auto-detected from data (ordered by graph depth, roots first)
+Node types: auto-detected from data (ordered by graph depth, roots first). Types with reversed edge direction (e.g. crew→vessel where crew has no incoming edges but is semantically a leaf) have their depth inferred from neighbouring types.
+
 Edge rels: auto-detected from data (ordered by frequency)
 
 ## Development
@@ -66,7 +70,9 @@ Run GraphStore unit tests with Node's built-in test runner:
 node --test test/data.test.mjs
 ```
 
-Tests exercise validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, and nodeRadius. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+81 tests covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+
+A 9.6K-node test fixture is available at `test/fixtures/sample-large-graph.json` for visual testing.
 
 ### Visual (browser required)
 Use Playwright MCP to load the page, drop a JSON file, and verify the graph renders.
@@ -74,9 +80,11 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 ## Conventions
 
 - Dark theme with slate/indigo palette (see CSS custom properties)
-- Node colors auto-assigned from a 16-colour palette in `data.js` — accessed via `store.colorForType()`
-- Node sizes computed by `store.nodeRadius()` based on type hierarchy depth + child count
+- Node colors auto-assigned from a 16-colour palette in `data.js` (ordered for maximum perceptual contrast between adjacent types) — accessed via `store.colorForType()`
+- Node sizes computed by `store.nodeRadius()` using exponential decay across the type hierarchy (roots largest, leaves smallest) plus a child-count area bonus
 - Edge colors/dashes auto-assigned from palettes in `data.js` — accessed via `store.colorForRel()` / `store.dashForRel()`
+- Expanded nodes have a light stroke to distinguish them from collapsed nodes
 - Tooltip and detail panel show all node attrs generically (no hardcoded field names)
 - All user-facing text is plain English, no abbreviations
 - No comments unless explaining *why*, not *what*
+- Use `removeAttribute('display')` rather than `setAttribute('display', null)` for cross-browser compatibility (Firefox treats null as the literal string "null")
