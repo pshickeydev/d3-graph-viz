@@ -146,7 +146,7 @@ function loadGraph(json) {
     const node = store.nodeMap.get(nodeId);
     if (node && !store.enabledTypes.has(node.type)) {
       store.enabledTypes.add(node.type);
-      renderTypeFilters(filters, store, onTypeFilterChange);
+      renderTypeFilters(filters, store, onTypeFilterChange, refreshGraph);
     }
     store.reveal(nodeId);
     refreshGraph();
