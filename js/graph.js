@@ -104,6 +104,9 @@ export class GraphRenderer {
         if (Math.abs(event.transform.k - prevScale) / (prevScale || 1) > 0.05) {
           this._updateLabelVisibility();
         }
+      })
+      .on('end', () => {
+        this._updateLabelVisibility();
       });
 
     this.svg.call(this._zoom);
@@ -529,7 +532,9 @@ export class GraphRenderer {
     const ty = this.height / 2 - cy * scale;
 
     const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
-    this.svg.transition().duration(400).call(this._zoom.transform, t);
+    this.svg.transition().duration(400)
+      .call(this._zoom.transform, t)
+      .on('end', () => this._updateLabelVisibility());
   }
 
   /* ---------------------------------------------------------------- */
