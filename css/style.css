@@ -319,6 +319,52 @@ html, body {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Attribute selectors                                                */
+/* ------------------------------------------------------------------ */
+
+.attr-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attr-selector-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 62px;
+}
+
+.attr-selector {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.attr-selector:focus {
+  border-color: var(--accent);
+}
+
+.attr-selector option {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Detail panel                                                       */
 /* ------------------------------------------------------------------ */
 

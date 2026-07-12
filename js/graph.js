@@ -243,11 +243,12 @@ export class GraphRenderer {
 
     // --- Links ---
     this._visibleNodeCount = simNodes.length;
-    const edgeOpacity = simNodes.length > 500 ? 0.12
+    const hasAttrMapping = store.colorAttr || store.sizeAttr;
+    const baseEdgeOpacity = simNodes.length > 500 ? 0.12
       : simNodes.length > 200 ? 0.2
       : simNodes.length > 50 ? 0.35
       : 0.5;
-    const edgeWidth = simNodes.length > 500 ? 0.6
+    const baseEdgeWidth = simNodes.length > 500 ? 0.6
       : simNodes.length > 100 ? 0.8
       : 1.2;
     const showArrows = simNodes.length <= 300;
@@ -257,15 +258,23 @@ export class GraphRenderer {
       .join(
         (enter) => enter.append('line')
           .attr('stroke', (d) => store.colorForRel(d.rel))
-          .attr('stroke-width', edgeWidth)
+          .attr('stroke-width', (d) => hasAttrMapping
+            ? baseEdgeWidth + store.edgeWeight(d._raw) * 2
+            : baseEdgeWidth)
           .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
-          .attr('stroke-opacity', edgeOpacity)
+          .attr('stroke-opacity', (d) => hasAttrMapping
+            ? 0.08 + store.edgeWeight(d._raw) * 0.5
+            : baseEdgeOpacity)
           .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (update) => update
           .attr('stroke', (d) => store.colorForRel(d.rel))
           .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
-          .attr('stroke-opacity', edgeOpacity)
-          .attr('stroke-width', edgeWidth)
+          .attr('stroke-opacity', (d) => hasAttrMapping
+            ? 0.08 + store.edgeWeight(d._raw) * 0.5
+            : baseEdgeOpacity)
+          .attr('stroke-width', (d) => hasAttrMapping
+            ? baseEdgeWidth + store.edgeWeight(d._raw) * 2
+            : baseEdgeWidth)
           .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (exit) => exit.remove(),
       );
@@ -277,7 +286,8 @@ export class GraphRenderer {
       .join(
         (enter) => enter.append('circle')
           .attr('r', (d) => store.nodeRadius(d))
-          .attr('fill', (d) => store.colorForType(d.type))
+          .attr('fill', (d) => store.nodeColor(d))
+          .attr('opacity', (d) => store.nodeOpacity(d))
           .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
           .attr('stroke-width', (d) => d.expanded ? 2 : 1.5)
           .attr('cursor', 'pointer')
@@ -287,7 +297,8 @@ export class GraphRenderer {
           .on('mouseleave', (_event, d) => this.onNodeHoverOut(d)),
         (update) => update
           .attr('r', (d) => store.nodeRadius(d))
-          .attr('fill', (d) => store.colorForType(d.type))
+          .attr('fill', (d) => store.nodeColor(d))
+          .attr('opacity', (d) => store.nodeOpacity(d))
           .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
           .attr('stroke-width', (d) => d.expanded ? 2 : 1.5),
         (exit) => exit.remove(),
@@ -316,7 +327,9 @@ export class GraphRenderer {
           .attr('fill', '#e2e8f0')
           .attr('pointer-events', 'none'),
         (update) => update
-          .text((d) => _truncateLabel(d.label || d.id, 24)),
+          .text((d) => _truncateLabel(d.label || d.id, 24))
+          .attr('font-size', (d) => Math.max(9, store.nodeRadius(d) * 0.7))
+          .attr('dy', (d) => store.nodeRadius(d) + 14),
         (exit) => exit.remove(),
       );
     this._updateLabelVisibility();
@@ -429,12 +442,18 @@ export class GraphRenderer {
    */
   highlight(nodeId, connectedIds) {
     this._highlightedId = nodeId;
+    const store = this.store;
     if (!nodeId) {
-      this._nodeSel && this._nodeSel.attr('opacity', 1);
+      this._nodeSel && this._nodeSel
+        .attr('opacity', (d) => store.nodeOpacity(d));
+      const hasAttrMapping = store.colorAttr || store.sizeAttr;
       const baseOpacity = this._visibleNodeCount > 500 ? 0.12
         : this._visibleNodeCount > 200 ? 0.2
         : this._visibleNodeCount > 50 ? 0.35 : 0.5;
-      this._linkSel && this._linkSel.attr('stroke-opacity', baseOpacity);
+      this._linkSel && this._linkSel
+        .attr('stroke-opacity', (d) => hasAttrMapping
+          ? 0.08 + store.edgeWeight(d._raw) * 0.5
+          : baseOpacity);
       this._labelSel && this._labelSel.attr('opacity', 1);
       this._updateLabelVisibility();
       return;

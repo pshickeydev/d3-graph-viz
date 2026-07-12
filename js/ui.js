@@ -152,6 +152,92 @@ function renderSearchResults(el, results, store, onSelect) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Attribute selectors (colour-by / size-by)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render dropdowns for choosing colour-by and size-by attributes.
+ * @param {HTMLElement} el
+ * @param {import('./data.js').GraphStore} store
+ * @param {function}    onChange — called after either selector changes
+ */
+export function renderAttrSelectors(el, store, onChange) {
+  el.innerHTML = '';
+
+  const colorAttrs = store.colorableAttrs();
+  const sizeAttrs = store.sizableAttrs();
+
+  const section = el.closest('.sidebar-section');
+  if (colorAttrs.length === 0 && sizeAttrs.length === 0) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  if (section) section.classList.remove('hidden');
+
+  if (colorAttrs.length > 0) {
+    const row = document.createElement('div');
+    row.className = 'attr-selector-row';
+    const label = document.createElement('span');
+    label.className = 'attr-selector-label';
+    label.textContent = 'Colour by';
+    const select = document.createElement('select');
+    select.className = 'attr-selector';
+
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Node type';
+    select.appendChild(none);
+
+    for (const p of colorAttrs) {
+      const opt = document.createElement('option');
+      opt.value = p.key;
+      opt.textContent = `${p.key} (${p.kind})`;
+      select.appendChild(opt);
+    }
+
+    select.value = store.colorAttr || '';
+    select.addEventListener('change', () => {
+      store.setColorAttr(select.value || null);
+      onChange();
+    });
+    row.appendChild(label);
+    row.appendChild(select);
+    el.appendChild(row);
+  }
+
+  if (sizeAttrs.length > 0) {
+    const row = document.createElement('div');
+    row.className = 'attr-selector-row';
+    const label = document.createElement('span');
+    label.className = 'attr-selector-label';
+    label.textContent = 'Size by';
+    const select = document.createElement('select');
+    select.className = 'attr-selector';
+
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Type hierarchy';
+    select.appendChild(none);
+
+    for (const p of sizeAttrs) {
+      const opt = document.createElement('option');
+      opt.value = p.key;
+      opt.textContent = `${p.key}`;
+      select.appendChild(opt);
+    }
+
+    select.value = store.sizeAttr || '';
+    select.addEventListener('change', () => {
+      store.setSizeAttr(select.value || null);
+      onChange();
+    });
+    row.appendChild(label);
+    row.appendChild(select);
+    el.appendChild(row);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tooltip                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -164,7 +250,7 @@ function renderSearchResults(el, results, store, onSelect) {
  * @param {import('./data.js').GraphStore} store
  */
 export function showTooltip(tooltipEl, node, event, store) {
-  const color = store.colorForType(node.type);
+  const color = store.nodeColor(node);
   let html = `
     <div class="tooltip-header">
       <span class="filter-dot" style="background:${color}"></span>
@@ -177,17 +263,28 @@ export function showTooltip(tooltipEl, node, event, store) {
     html += `<div class="tooltip-detail">Children: ${node.childCount}</div>`;
   }
 
-  // Show up to 4 interesting attrs
   if (node.attrs && typeof node.attrs === 'object') {
+    const activeKeys = new Set();
+    if (store.colorAttr) activeKeys.add(store.colorAttr);
+    if (store.sizeAttr) activeKeys.add(store.sizeAttr);
+
     let shown = 0;
-    for (const [key, val] of Object.entries(node.attrs)) {
+    const entries = Object.entries(node.attrs);
+    const sorted = activeKeys.size > 0
+      ? entries.sort(([a], [b]) => (activeKeys.has(b) ? 1 : 0) - (activeKeys.has(a) ? 1 : 0))
+      : entries;
+
+    for (const [key, val] of sorted) {
       if (val == null || val === '') continue;
       if (shown >= 4) {
         html += `<div class="tooltip-detail">… and more</div>`;
         break;
       }
       const display = typeof val === 'object' ? JSON.stringify(val) : String(val);
-      html += `<div class="tooltip-detail">${escapeHtml(key)}: ${escapeHtml(display)}</div>`;
+      const bold = activeKeys.has(key);
+      html += bold
+        ? `<div class="tooltip-detail"><strong>${escapeHtml(key)}: ${escapeHtml(display)}</strong></div>`
+        : `<div class="tooltip-detail">${escapeHtml(key)}: ${escapeHtml(display)}</div>`;
       shown++;
     }
   }

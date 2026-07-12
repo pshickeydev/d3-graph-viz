@@ -482,6 +482,170 @@ describe('childrenIds', () => {
 });
 
 /* ================================================================
+ *  Attribute discovery
+ * ================================================================ */
+
+describe('attribute discovery', () => {
+  test('discovers numeric attrs', () => {
+    const { store } = createStore(100, 100);
+    const profile = store.attrProfiles.get('score');
+    assert.ok(profile, 'score attr should be discovered');
+    assert.equal(profile.kind, 'numeric');
+    assert.equal(profile.min, 0);
+    assert.equal(profile.max, 100);
+  });
+
+  test('discovers categorical attrs', () => {
+    const { store } = createStore(100, 100);
+    const profile = store.attrProfiles.get('tier');
+    assert.ok(profile, 'tier attr should be discovered');
+    assert.equal(profile.kind, 'categorical');
+    assert.ok(profile.values.length >= 2);
+  });
+
+  test('colorableAttrs includes both numeric and categorical', () => {
+    const { store } = createStore(100, 100);
+    const attrs = store.colorableAttrs();
+    assert.ok(attrs.length >= 2);
+    const kinds = new Set(attrs.map((a) => a.kind));
+    assert.ok(kinds.has('numeric'));
+    assert.ok(kinds.has('categorical'));
+  });
+
+  test('sizableAttrs includes only numeric', () => {
+    const { store } = createStore(100, 100);
+    const attrs = store.sizableAttrs();
+    assert.ok(attrs.length >= 1);
+    for (const a of attrs) {
+      assert.equal(a.kind, 'numeric');
+    }
+  });
+});
+
+/* ================================================================
+ *  Colour-by-attr
+ * ================================================================ */
+
+describe('setColorAttr', () => {
+  test('numeric attr assigns hex colours to nodes', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('score');
+    let colored = 0;
+    for (const node of store.nodeMap.values()) {
+      const c = store.nodeColor(node);
+      if (c !== DEFAULT_COLOR) colored++;
+      assert.ok(c.startsWith('#'), `colour should be hex, got ${c}`);
+    }
+    assert.ok(colored > 50, 'most nodes should get attr-based colour');
+  });
+
+  test('categorical attr assigns palette colours', () => {
+    const { store } = createStore(100, 100);
+    store.setColorAttr('tier');
+    const colours = new Set();
+    for (const node of store.nodeMap.values()) {
+      colours.add(store.nodeColor(node));
+    }
+    assert.ok(colours.size >= 2, 'should have at least 2 distinct colours');
+  });
+
+  test('null reverts to type colour', () => {
+    const { store } = createStore(100, 100);
+    const node = store.nodeMap.values().next().value;
+    const typeColor = store.colorForType(node.type);
+    store.setColorAttr('score');
+    assert.notEqual(store.nodeColor(node), typeColor);
+    store.setColorAttr(null);
+    assert.equal(store.nodeColor(node), typeColor);
+  });
+});
+
+/* ================================================================
+ *  Size-by-attr
+ * ================================================================ */
+
+describe('setSizeAttr', () => {
+  test('numeric attr produces varying radii', () => {
+    const { store } = createStore(100, 100);
+    store.setSizeAttr('score');
+    const radii = new Set();
+    for (const node of store.nodeMap.values()) {
+      radii.add(store.nodeRadius(node));
+    }
+    assert.ok(radii.size > 3, 'should have multiple distinct radii');
+  });
+
+  test('null reverts to default sizing', () => {
+    const { store } = createStore(100, 100);
+    const node = store.nodeMap.values().next().value;
+    const defaultR = store.nodeRadius(node);
+    store.setSizeAttr('score');
+    store.setSizeAttr(null);
+    assert.equal(store.nodeRadius(node), defaultR);
+  });
+
+  test('min-value node gets minimum radius', () => {
+    const { store } = createStore(100, 100);
+    store.setSizeAttr('score');
+    const minNode = [...store.nodeMap.values()].find((n) => n.attrs?.score === 0);
+    if (minNode) {
+      assert.equal(store.nodeRadius(minNode), 3);
+    }
+  });
+});
+
+/* ================================================================
+ *  Node opacity
+ * ================================================================ */
+
+describe('nodeOpacity', () => {
+  test('returns 1 when no attr mapping active', () => {
+    const { store } = createStore(100, 100);
+    for (const node of store.nodeMap.values()) {
+      assert.equal(store.nodeOpacity(node), 1);
+    }
+  });
+
+  test('fades nodes missing the active colour attr', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a', type: 'x', label: 'A', attrs: { val: 10 } },
+        { id: 'b', type: 'x', label: 'B', attrs: { val: 20 } },
+        { id: 'c', type: 'x', label: 'C', attrs: {} },
+        { id: 'd', type: 'x', label: 'D', attrs: { val: 30 } },
+        { id: 'e', type: 'x', label: 'E', attrs: { val: 40 } },
+        { id: 'f', type: 'x', label: 'F', attrs: { val: 50 } },
+      ],
+      edges: [],
+    });
+    store.setColorAttr('val');
+    assert.equal(store.nodeOpacity(store.nodeMap.get('a')), 1);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('c')), 0.15);
+  });
+});
+
+/* ================================================================
+ *  Edge weight
+ * ================================================================ */
+
+describe('edgeWeight', () => {
+  test('returns 0.5 when no attr active', () => {
+    const { store } = createStore(100, 100);
+    const edge = store.raw.edges[0];
+    assert.equal(store.edgeWeight(edge), 0.5);
+  });
+
+  test('scales with target node attr value', () => {
+    const { store } = createStore(100, 100);
+    store.setSizeAttr('score');
+    const weights = store.raw.edges.slice(0, 20).map((e) => store.edgeWeight(e));
+    const unique = new Set(weights);
+    assert.ok(unique.size > 1, 'edge weights should vary');
+  });
+});
+
+/* ================================================================
  *  Size-specific performance & correctness
  * ================================================================ */
 

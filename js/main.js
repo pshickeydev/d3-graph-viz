@@ -7,6 +7,7 @@ import { GraphRenderer } from './graph.js';
 import {
   renderStats,
   renderTypeFilters,
+  renderAttrSelectors,
   wireSearch,
   showTooltip,
   hideTooltip,
@@ -27,6 +28,7 @@ const searchIn  = $('#search-input');
 const searchRes = $('#search-results');
 const detail    = $('#detail-panel');
 const tooltip   = $('#tooltip');
+const attrSel   = $('#attr-selectors');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const toggleLabels   = $('#toggle-labels input');
@@ -111,6 +113,8 @@ function loadGraph(json) {
     refreshGraph();
   }
   renderTypeFilters(filters, store, onTypeFilterChange);
+
+  renderAttrSelectors(attrSel, store, refreshGraph);
 
   btnExpandAll.onclick = () => {
     store.expandAll();

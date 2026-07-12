@@ -53,6 +53,25 @@ const REL_DASHES = [
 /** Fallback colour for overflow types. */
 export const DEFAULT_COLOR = '#94a3b8';
 
+const HEAT_RAMP = [
+  '#22d3ee',
+  '#4ade80',
+  '#a3e635',
+  '#facc15',
+  '#fb923c',
+  '#f87171',
+  '#dc2626',
+  '#991b1b',
+];
+
+const CATEGORY_PALETTE = [
+  '#6366f1', '#f59e0b', '#10b981', '#ef4444',
+  '#06b6d4', '#a855f7', '#f97316', '#3b82f6',
+  '#ec4899', '#84cc16', '#8b5cf6', '#14b8a6',
+];
+
+const MAX_DISTINCT_CATEGORICAL = 20;
+
 /* ------------------------------------------------------------------ */
 /*  Graph store                                                        */
 /* ------------------------------------------------------------------ */
@@ -130,6 +149,19 @@ export class GraphStore {
     this._typeBaseRadius = new Map();
     /** @type {Map<string, number>} cached node count per type */
     this._typeCounts = new Map();
+
+    /** @type {Map<string, AttrProfile>} discovered attr metadata */
+    this.attrProfiles = new Map();
+
+    /** Active attribute for colour mapping (null = use type colour). */
+    this._colorAttr = null;
+    /** Active attribute for size mapping (null = use type+child sizing). */
+    this._sizeAttr = null;
+
+    /** @type {Map<string, string>} node-id → computed colour when colorAttr active */
+    this._attrColorCache = new Map();
+    /** @type {Map<string, number>} node-id → computed radius when sizeAttr active */
+    this._attrSizeCache = new Map();
   }
 
   /* ---------------------------------------------------------------- */
@@ -181,6 +213,12 @@ export class GraphStore {
     this._deriveRelInfo();
 
     this.enabledTypes = new Set(this.typeList);
+
+    this._discoverAttrs();
+    this._colorAttr = null;
+    this._sizeAttr = null;
+    this._attrColorCache.clear();
+    this._attrSizeCache.clear();
 
     const levels = Math.max(this.typeList.length - 1, 1);
     const maxR = 24, minR = 4;
@@ -337,6 +375,147 @@ export class GraphStore {
     for (let i = 0; i < this.relList.length; i++) {
       this.relColors.set(this.relList[i], REL_PALETTE[i % REL_PALETTE.length]);
       this.relDashes.set(this.relList[i], REL_DASHES[i % REL_DASHES.length]);
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Attribute discovery                                              */
+  /* ---------------------------------------------------------------- */
+
+  _discoverAttrs() {
+    this.attrProfiles.clear();
+    const stats = new Map();
+
+    for (const node of this.nodeMap.values()) {
+      if (!node.attrs || typeof node.attrs !== 'object') continue;
+      for (const [key, val] of Object.entries(node.attrs)) {
+        if (val == null || val === '') continue;
+        if (!stats.has(key)) {
+          stats.set(key, { count: 0, numCount: 0, min: Infinity, max: -Infinity, distinct: new Set() });
+        }
+        const s = stats.get(key);
+        s.count++;
+        const num = Number(val);
+        if (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(num))) {
+          s.numCount++;
+          if (num < s.min) s.min = num;
+          if (num > s.max) s.max = num;
+        }
+        if (typeof val === 'string' || typeof val === 'boolean') {
+          if (s.distinct.size <= MAX_DISTINCT_CATEGORICAL) s.distinct.add(String(val));
+        }
+      }
+    }
+
+    for (const [key, s] of stats) {
+      if (s.count < 5) continue;
+
+      const numRatio = s.numCount / s.count;
+      if (numRatio > 0.8 && s.min < s.max) {
+        this.attrProfiles.set(key, {
+          key,
+          kind: 'numeric',
+          min: s.min,
+          max: s.max,
+          count: s.count,
+        });
+      } else if (s.distinct.size >= 2 && s.distinct.size <= MAX_DISTINCT_CATEGORICAL) {
+        const values = [...s.distinct].sort();
+        this.attrProfiles.set(key, {
+          key,
+          kind: 'categorical',
+          values,
+          count: s.count,
+        });
+      }
+    }
+  }
+
+  /** List attrs suitable for colour mapping. */
+  colorableAttrs() {
+    return [...this.attrProfiles.values()];
+  }
+
+  /** List attrs suitable for size mapping (numeric only). */
+  sizableAttrs() {
+    return [...this.attrProfiles.values()].filter((p) => p.kind === 'numeric');
+  }
+
+  /**
+   * Set the active colour attribute. Pass null to revert to type colour.
+   * @param {string|null} attrKey
+   */
+  setColorAttr(attrKey) {
+    this._colorAttr = attrKey;
+    this._rebuildColorCache();
+  }
+
+  /**
+   * Set the active size attribute. Pass null to revert to default sizing.
+   * @param {string|null} attrKey
+   */
+  setSizeAttr(attrKey) {
+    this._sizeAttr = attrKey;
+    this._rebuildSizeCache();
+  }
+
+  get colorAttr() { return this._colorAttr; }
+  get sizeAttr() { return this._sizeAttr; }
+
+  _rebuildColorCache() {
+    this._attrColorCache.clear();
+    const attrKey = this._colorAttr;
+    if (!attrKey) return;
+
+    const profile = this.attrProfiles.get(attrKey);
+    if (!profile) return;
+
+    if (profile.kind === 'numeric') {
+      const { min, max } = profile;
+      const range = max - min || 1;
+      for (const node of this.nodeMap.values()) {
+        const raw = node.attrs?.[attrKey];
+        if (raw == null || raw === '') continue;
+        const num = Number(raw);
+        if (isNaN(num)) continue;
+        const t = (num - min) / range;
+        const idx = Math.min(Math.floor(t * (HEAT_RAMP.length - 1)), HEAT_RAMP.length - 2);
+        const frac = t * (HEAT_RAMP.length - 1) - idx;
+        this._attrColorCache.set(node.id, _lerpColor(HEAT_RAMP[idx], HEAT_RAMP[idx + 1], frac));
+      }
+    } else {
+      const catColors = new Map();
+      for (let i = 0; i < profile.values.length; i++) {
+        catColors.set(profile.values[i], CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]);
+      }
+      for (const node of this.nodeMap.values()) {
+        const raw = node.attrs?.[attrKey];
+        if (raw == null || raw === '') continue;
+        const c = catColors.get(String(raw));
+        if (c) this._attrColorCache.set(node.id, c);
+      }
+    }
+  }
+
+  _rebuildSizeCache() {
+    this._attrSizeCache.clear();
+    const attrKey = this._sizeAttr;
+    if (!attrKey) return;
+
+    const profile = this.attrProfiles.get(attrKey);
+    if (!profile || profile.kind !== 'numeric') return;
+
+    const { min, max } = profile;
+    const range = max - min || 1;
+    const minR = 3, maxR = 28;
+
+    for (const node of this.nodeMap.values()) {
+      const raw = node.attrs?.[attrKey];
+      if (raw == null || raw === '') continue;
+      const num = Number(raw);
+      if (isNaN(num)) continue;
+      const t = (num - min) / range;
+      this._attrSizeCache.set(node.id, minR + (maxR - minR) * Math.sqrt(t));
     }
   }
 
@@ -536,6 +715,31 @@ export class GraphStore {
     return this.typeColors.get(type) || DEFAULT_COLOR;
   }
 
+  /**
+   * Get colour for a specific node. Returns attr-driven colour when
+   * a colour attribute is active, falling back to type colour.
+   * @param {GraphNode} node
+   * @returns {string}
+   */
+  nodeColor(node) {
+    if (this._colorAttr) {
+      return this._attrColorCache.get(node.id) || DEFAULT_COLOR;
+    }
+    return this.colorForType(node.type);
+  }
+
+  /**
+   * Get opacity for a node. When a colour or size attribute is active,
+   * nodes missing the attribute value fade out.
+   * @param {GraphNode} node
+   * @returns {number}
+   */
+  nodeOpacity(node) {
+    if (this._colorAttr && !this._attrColorCache.has(node.id)) return 0.15;
+    if (this._sizeAttr && !this._attrSizeCache.has(node.id)) return 0.15;
+    return 1;
+  }
+
   /** Get colour for an edge rel. */
   colorForRel(rel) {
     return this.relColors.get(rel) || DEFAULT_COLOR;
@@ -547,16 +751,41 @@ export class GraphStore {
   }
 
   /**
-   * Compute node radius based on its position in the type hierarchy
-   * and its child count. Uses pre-computed base radius per type.
+   * Compute node radius. When a size attribute is active, radius is
+   * derived from that attribute value. Otherwise uses type hierarchy
+   * position and child count.
    * @param {GraphNode} node
    * @returns {number}
    */
   nodeRadius(node) {
+    if (this._sizeAttr) {
+      return this._attrSizeCache.get(node.id) || 3;
+    }
     const base = this._typeBaseRadius.get(node.type);
     if (base === undefined) return 4;
     const extraA = Math.min(node.childCount || 0, 64);
     return Math.sqrt(base * base + extraA);
+  }
+
+  /**
+   * Compute a weight [0,1] for an edge based on the active colour
+   * or size attribute of its target node. Used by the renderer to
+   * scale edge stroke width and opacity.
+   * @param {GraphEdge} edge
+   * @returns {number}
+   */
+  edgeWeight(edge) {
+    const attrKey = this._sizeAttr || this._colorAttr;
+    if (!attrKey) return 0.5;
+    const profile = this.attrProfiles.get(attrKey);
+    if (!profile || profile.kind !== 'numeric') return 0.5;
+    const targetNode = this.nodeMap.get(edge.to);
+    if (!targetNode) return 0.2;
+    const raw = targetNode.attrs?.[attrKey];
+    if (raw == null || raw === '') return 0.1;
+    const num = Number(raw);
+    if (isNaN(num)) return 0.1;
+    return (num - profile.min) / (profile.max - profile.min || 1);
   }
 
   /**
@@ -607,4 +836,22 @@ export class GraphStore {
   childrenIds(nodeId) {
     return this.childrenOf.get(nodeId) || [];
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Colour interpolation                                               */
+/* ------------------------------------------------------------------ */
+
+function _parseHex(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function _lerpColor(a, b, t) {
+  const [r1, g1, b1] = _parseHex(a);
+  const [r2, g2, b2] = _parseHex(b);
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const bl = Math.round(b1 + (b2 - b1) * t);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
 }

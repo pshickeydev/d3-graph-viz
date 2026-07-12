@@ -16,6 +16,7 @@
 export function generateGraph(nodeCount, edgeCount) {
   const TYPES = ['root', 'branch', 'leaf', 'stem', 'cluster'];
   const RELS  = ['contains', 'references', 'depends', 'links'];
+  const TIERS = ['gold', 'silver', 'bronze'];
 
   const nodes = [];
   for (let i = 0; i < nodeCount; i++) {
@@ -26,7 +27,12 @@ export function generateGraph(nodeCount, edgeCount) {
       id: `n${i}`,
       type,
       label: `Node ${i}`,
-      attrs: { index: i, tier: type },
+      attrs: {
+        index: i,
+        tier: TIERS[i % TIERS.length],
+        score: Math.round((i / Math.max(nodeCount - 1, 1)) * 100),
+        weight: Math.round(Math.random() * 50),
+      },
     });
   }
 
