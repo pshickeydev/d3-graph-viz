@@ -333,8 +333,8 @@ export class GraphRenderer {
       const overlay = this.container.querySelector('#loading-overlay');
       if (overlay) overlay.classList.remove('hidden');
 
-      const TARGET_MS = 5000;
-      const MAX_TICKS = 500;
+      const TARGET_MS = 10000;
+      const MAX_TICKS = 1000;
       const CHUNK = 20;
       let done = 0;
       const gen = ++this._preTickId;
