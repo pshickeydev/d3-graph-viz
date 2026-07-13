@@ -73,6 +73,8 @@ export class GraphRenderer {
     this._clusterStrength = 0;
     this._zoomScale = 1;
     this._visibleNodeCount = 0;
+    this._forceOverrides = {};
+    this._autoForceParams = {};
 
     this._init();
   }
@@ -396,41 +398,84 @@ export class GraphRenderer {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
 
-    const chargeStrength = -60 - t * 60;
+    const labelPad = this.showLabels ? 12 : 4;
+
+    this._autoForceParams = {
+      chargeStrength: -60 - t * 60,
+      linkDistance: 30 + (1 - t) * 30,
+      gravity: 0.03 * (1 - t * 0.6),
+      clusterStrength: t * 0.06,
+      collisionPad: labelPad,
+    };
+
+    const p = this._effectiveForceParams();
+
     const chargeMax = 300 + t * 200;
-    const linkDist = 30 + (1 - t) * 30;
-    const gravity = 0.03 * (1 - t * 0.6);
-    const clusterStrength = t * 0.06;
-    this._clusterStrength = clusterStrength;
     const alphaDecay = 0.02 + t * 0.04;
     const velocityDecay = 0.35 + t * 0.3;
     const theta = n > 2000 ? 2.5 : 0.9;
 
-    const labelPad = this.showLabels ? 12 : 4;
+    this._clusterStrength = p.clusterStrength;
 
     this.simulation
       .force('link')
-        .distance(linkDist)
+        .distance(p.linkDistance)
         .strength(null);
     this.simulation
       .force('charge')
-        .strength(chargeStrength)
+        .strength(p.chargeStrength)
         .distanceMax(chargeMax)
         .theta(theta);
     this.simulation
       .force('collision')
-        .radius((d) => this.store.nodeRadius(d) + labelPad);
+        .radius((d) => this.store.nodeRadius(d) + p.collisionPad);
     this.simulation
       .force('x')
-        .strength(gravity);
+        .strength(p.gravity);
     this.simulation
       .force('y')
-        .strength(gravity);
+        .strength(p.gravity);
     this.simulation
-      .force('cluster', forceCluster(clusterCenters, clusterStrength));
+      .force('cluster', forceCluster(clusterCenters, p.clusterStrength));
     this.simulation
       .alphaDecay(alphaDecay)
       .velocityDecay(velocityDecay);
+  }
+
+  _effectiveForceParams() {
+    return { ...this._autoForceParams, ...this._forceOverrides };
+  }
+
+  getForceParams() {
+    return this._effectiveForceParams();
+  }
+
+  setForceParam(key, value) {
+    this._forceOverrides[key] = value;
+    this._applyForceOverrides();
+  }
+
+  clearForceOverrides() {
+    this._forceOverrides = {};
+    this._applyForceOverrides();
+  }
+
+  hasForceOverrides() {
+    return Object.keys(this._forceOverrides).length > 0;
+  }
+
+  _applyForceOverrides() {
+    const p = this._effectiveForceParams();
+    this._clusterStrength = p.clusterStrength;
+    this.simulation.force('link').distance(p.linkDistance).strength(null);
+    this.simulation.force('charge').strength(p.chargeStrength);
+    this.simulation.force('collision')
+      .radius((d) => this.store.nodeRadius(d) + p.collisionPad);
+    this.simulation.force('x').strength(p.gravity);
+    this.simulation.force('y').strength(p.gravity);
+    const clusterCenters = this.store.clusterCenters(this.width, this.height);
+    this.simulation.force('cluster', forceCluster(clusterCenters, p.clusterStrength));
+    this.simulation.alpha(0.3).restart();
   }
 
   /* ---------------------------------------------------------------- */

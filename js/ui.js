@@ -490,6 +490,80 @@ export function renderDetail(el, node, edges, store) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Force controls                                                     */
+/* ------------------------------------------------------------------ */
+
+const FORCE_PARAMS = [
+  { key: 'chargeStrength', label: 'Repulsion', min: -200, max: 0, step: 1 },
+  { key: 'linkDistance',   label: 'Link distance', min: 5, max: 200, step: 1 },
+  { key: 'gravity',       label: 'Gravity', min: 0, max: 0.15, step: 0.002 },
+  { key: 'collisionPad',  label: 'Collision pad', min: 0, max: 40, step: 1 },
+  { key: 'clusterStrength', label: 'Clustering', min: 0, max: 0.3, step: 0.005 },
+];
+
+export function renderForceControls(el, renderer, onChange) {
+  el.innerHTML = '';
+
+  const current = renderer.getForceParams();
+
+  for (const p of FORCE_PARAMS) {
+    const row = document.createElement('div');
+    row.className = 'force-control-row';
+
+    const header = document.createElement('div');
+    header.className = 'force-control-header';
+
+    const lbl = document.createElement('label');
+    lbl.className = 'force-control-label';
+    lbl.textContent = p.label;
+
+    const val = document.createElement('span');
+    val.className = 'force-control-value';
+
+    header.appendChild(lbl);
+    header.appendChild(val);
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.className = 'force-slider';
+    input.min = p.min;
+    input.max = p.max;
+    input.step = p.step;
+    const snapped = Math.round(current[p.key] / p.step) * p.step;
+    input.value = snapped;
+    val.textContent = formatForceValue(snapped, p);
+
+    input.addEventListener('input', () => {
+      const v = Number(input.value);
+      val.textContent = formatForceValue(v, p);
+      renderer.setForceParam(p.key, v);
+      if (onChange) onChange();
+    });
+
+    row.appendChild(header);
+    row.appendChild(input);
+    el.appendChild(row);
+  }
+
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'action-btn';
+  resetBtn.textContent = 'Reset forces';
+  resetBtn.style.marginTop = '8px';
+  resetBtn.addEventListener('click', () => {
+    renderer.clearForceOverrides();
+    renderForceControls(el, renderer, onChange);
+    if (onChange) onChange();
+  });
+  el.appendChild(resetBtn);
+}
+
+function formatForceValue(v, param) {
+  if (param.step < 0.01) return v.toFixed(3);
+  if (param.step < 1) return v.toFixed(2);
+  return String(Math.round(v));
+}
+
+/* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 

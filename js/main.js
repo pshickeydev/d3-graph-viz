@@ -9,6 +9,7 @@ import {
   renderTypeFilters,
   renderAttrSelectors,
   renderColorLegend,
+  renderForceControls,
   wireSearch,
   showTooltip,
   hideTooltip,
@@ -31,6 +32,7 @@ const detail    = $('#detail-panel');
 const tooltip   = $('#tooltip');
 const attrSel   = $('#attr-selectors');
 const legend    = $('#color-legend');
+const forceCtrl = $('#force-controls');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const toggleLabels   = $('#toggle-labels input');
@@ -179,6 +181,7 @@ function loadGraph(json) {
   });
 
   refreshGraph();
+  renderForceControls(forceCtrl, renderer);
   renderDetail(detail, null, [], store);
 }
 
@@ -186,6 +189,9 @@ function refreshGraph() {
   if (!renderer) return;
   const visible = store.getVisible();
   renderer.update(visible);
+  if (forceCtrl && !renderer.hasForceOverrides()) {
+    renderForceControls(forceCtrl, renderer);
+  }
 }
 
 /* ------------------------------------------------------------------ */
