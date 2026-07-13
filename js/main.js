@@ -11,6 +11,7 @@ import {
   renderColorLegend,
   renderForceControls,
   wireSearch,
+  wireSidebarCollapse,
   showTooltip,
   hideTooltip,
   renderDetail,
@@ -103,6 +104,7 @@ function loadGraph(json) {
   graphEl.classList.remove('hidden');
   $('#sidebar').classList.remove('hidden');
   statsBar.classList.remove('hidden');
+  wireSidebarCollapse($('#sidebar'));
 
   // Stats
   renderStats(statsBar, json.stats, json.generated, store);

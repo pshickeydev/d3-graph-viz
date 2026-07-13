@@ -180,6 +180,49 @@ html, body {
   letter-spacing: 0.05em;
   color: var(--text-muted);
   margin-bottom: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.sidebar-section h4:hover {
+  color: var(--text);
+}
+
+.sidebar-section h4::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.sidebar-section.collapsed h4 {
+  margin-bottom: 0;
+}
+
+.sidebar-section.collapsed h4::before {
+  transform: rotate(-90deg);
+}
+
+.sidebar-section-body {
+  overflow: hidden;
+}
+
+.sidebar-section.collapsed .sidebar-section-body {
+  display: none;
+}
+
+.sidebar-section-flex {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------ */

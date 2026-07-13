@@ -46,34 +46,44 @@
         <!-- Search -->
         <div class="sidebar-section">
           <h4>Search</h4>
-          <input id="search-input" type="text" placeholder="Search nodes…">
-          <div id="search-results" class="hidden"></div>
+          <div class="sidebar-section-body">
+            <input id="search-input" type="text" placeholder="Search nodes…">
+            <div id="search-results" class="hidden"></div>
+          </div>
         </div>
 
         <!-- Type filters -->
         <div class="sidebar-section">
           <h4>Node Types</h4>
-          <div id="type-filters"></div>
+          <div class="sidebar-section-body">
+            <div id="type-filters"></div>
+          </div>
         </div>
 
         <!-- Attribute mapping -->
         <div class="sidebar-section">
           <h4>Visual Mapping</h4>
-          <div id="attr-selectors"></div>
-          <div id="color-legend" class="hidden"></div>
+          <div class="sidebar-section-body">
+            <div id="attr-selectors"></div>
+            <div id="color-legend" class="hidden"></div>
+          </div>
         </div>
 
         <!-- Force controls -->
         <div class="sidebar-section">
           <h4>Forces</h4>
-          <div id="force-controls"></div>
+          <div class="sidebar-section-body">
+            <div id="force-controls"></div>
+          </div>
         </div>
 
         <!-- Detail panel -->
-        <div class="sidebar-section" style="flex:1; overflow-y:auto; border-bottom:none;">
+        <div class="sidebar-section sidebar-section-flex" style="flex:1; border-bottom:none;">
           <h4>Details</h4>
-          <div id="detail-panel">
-            <div class="detail-empty">Click a node to see details</div>
+          <div class="sidebar-section-body" style="flex:1; overflow-y:auto;">
+            <div id="detail-panel">
+              <div class="detail-empty">Click a node to see details</div>
+            </div>
           </div>
         </div>
       </div>

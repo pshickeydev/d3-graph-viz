@@ -564,6 +564,20 @@ function formatForceValue(v, param) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Collapsible sidebar sections                                       */
+/* ------------------------------------------------------------------ */
+
+export function wireSidebarCollapse(sidebar) {
+  for (const h4 of sidebar.querySelectorAll('.sidebar-section > h4')) {
+    if (h4._collapseWired) continue;
+    h4._collapseWired = true;
+    h4.addEventListener('click', () => {
+      h4.closest('.sidebar-section').classList.toggle('collapsed');
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
