@@ -184,11 +184,12 @@ function loadGraph(json) {
     },
     onNodeHover: (node, event) => {
       showTooltip(tooltip, node, event, store);
-      highlightNode(node.id);
+      if (!selectedNodeId) highlightNode(node.id);
     },
     onNodeHoverOut: () => {
       hideTooltip(tooltip);
-      if (!selectedNodeId) renderer.highlight(null);
+      if (selectedNodeId) highlightNode(selectedNodeId);
+      else renderer.highlight(null);
     },
     onBackgroundClick: () => {
       selectedNodeId = null;
@@ -206,6 +207,7 @@ function refreshGraph() {
   if (!renderer) return;
   const visible = store.getVisible();
   renderer.update(visible);
+  if (selectedNodeId) highlightNode(selectedNodeId);
   if (forceCtrl && !renderer.hasForceOverrides()) {
     renderForceControls(forceCtrl, renderer);
   }
