@@ -13,7 +13,7 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 | `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping |
 | `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), pulls all visual config from `GraphStore` |
 | `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour legend (gradient bar or categorical swatches, all editable), search wiring, tooltip, detail sidebar |
-| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI |
+| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell, loads D3 v7 from CDN, imports `main.js` as ES module |
 
@@ -34,9 +34,12 @@ File drop/pick → main.js parses JSON
 - **Topology-driven layout**: D3's default link strength (inverse of node degree) keeps children clustered around high-degree parent nodes. New nodes are placed near their parent's position. A weak cluster force acts as a tiebreaker only for large graphs.
 - **Zoom-dependent labels**: labels are created for the top 500 nodes by radius, then shown/hidden based on zoom level. Only nodes whose radius exceeds a threshold at the current zoom scale display labels. Labels are truncated at 24 characters.
 - **Adaptive edge rendering**: edge opacity, stroke width, and arrow markers scale with the number of visible nodes to reduce visual noise in large graphs. When an attr mapping is active, edge weight derives from the target node's attr value.
+- **Selection takes precedence over hover**: clicking a node or selecting via search sets a persistent selection. While a node is selected, hovering other nodes shows the tooltip but does not change the highlight. The selection highlight is also re-applied after any graph refresh (expand/collapse, filter toggle, attr change) so it is never silently lost. Clicking the background clears the selection.
+- **Pre-tick layout**: when more than 100 new nodes appear, the simulation is pre-ticked off-screen in chunked `requestAnimationFrame` batches (up to 1000 ticks or 10 seconds) with collision disabled. A loading overlay ("Computing layout...") is shown during this phase. After pre-tick, `fitToView()` animates a zoom-to-fit transition.
+- **Responsive resize**: a `ResizeObserver` on the graph container recalculates the viewBox, centering forces, and cluster centers when the window resizes.
 - **D3 module as global**: D3 is loaded via `<script>` tag (not imported), so `d3` is a global. Don't add `import d3` statements.
 - **No build step**: all JS uses native ES module `import`/`export`. No bundler, no transpiler.
-- **State lives in `GraphStore`**: the renderer is stateless — call `update()` with new visible data after any store mutation. Colours and sizes are accessed via `store.nodeColor()`, `store.colorForType()`, `store.colorForRel()`, `store.nodeRadius()` etc.
+- **State lives in `GraphStore`**: the renderer is stateless — call `update()` with new visible data after any store mutation. Colours and sizes are accessed via `store.nodeColor()`, `store.colorForType()`, `store.colorForRel()`, `store.nodeRadius()` etc. Selection state (`selectedNodeId`) lives in `main.js`, not in the store or renderer.
 - **Attr-driven visual mapping**: `GraphStore` auto-discovers numeric and categorical attrs from node data. Users can select a "colour by" and "size by" attr via sidebar dropdowns. Numeric attrs map to a heat ramp (cyan→green→yellow→red); categorical attrs map to a distinct colour palette. Nodes missing the active attr fade to low opacity. All mapping is generic — no field names are hardcoded.
 
 ## Input Data Schema
@@ -78,6 +81,15 @@ A 9.6K-node test fixture is available at `test/fixtures/sample-large-graph.json`
 ### Visual (browser required)
 Use Playwright MCP to load the page, drop a JSON file, and verify the graph renders.
 
+## UI Controls
+
+- **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and detail panel.
+- **Pause / Resume**: freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. Button text and style toggle between "Pause" and "Resume".
+- **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
+- **Search**: 200ms debounce, minimum 2 characters, results capped to 20. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node. Pressing Escape clears the search.
+- **Force controls**: five sliders (Repulsion, Link distance, Gravity, Collision pad, Clustering) with a "Reset forces" button. Forces are auto-tuned based on node count; user overrides are stored separately and merged at runtime. Sliders only auto-refresh when no user overrides exist.
+- **Collapsible sidebar sections**: every `<h4>` inside a `.sidebar-section` toggles a `.collapsed` class on click.
+
 ## Conventions
 
 - Dark theme with slate/indigo palette (see CSS custom properties)
@@ -85,7 +97,9 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 - Node sizes computed by `store.nodeRadius()` using exponential decay across the type hierarchy (roots largest, leaves smallest) plus a child-count area bonus. When a size attr is active, radius derives from the attr value with sqrt scaling.
 - Edge colors/dashes auto-assigned from palettes in `data.js` — accessed via `store.colorForRel()` / `store.dashForRel()`. Edge stroke width and opacity also scale via `store.edgeWeight()` when an attr mapping is active.
 - Expanded nodes have a light stroke to distinguish them from collapsed nodes
-- Tooltip and detail panel show all node attrs generically (no hardcoded field names). When an attr mapping is active, the tooltip dot reflects the mapped colour and active attrs are shown first in bold.
+- Tooltip shows up to 4 attrs with "… and more" overflow. When an attr mapping is active, the tooltip dot reflects the mapped colour and active attrs are shown first in bold.
+- Detail panel shows type, ID, all attrs (URLs rendered as links), and up to 50 connections with direction arrows and rel names.
+- Stats bar shows generated date, total node/edge counts, and per-type colored dot counts.
 - All user-facing text is plain English, no abbreviations
 - No comments unless explaining *why*, not *what*
 - Use `removeAttribute('display')` rather than `setAttribute('display', null)` for cross-browser compatibility (Firefox treats null as the literal string "null")
