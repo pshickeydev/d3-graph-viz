@@ -306,6 +306,12 @@ html, body {
   border-color: var(--accent);
 }
 
+.action-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .action-toggle {
   display: flex;
   align-items: center;

@@ -75,6 +75,7 @@ export class GraphRenderer {
     this._visibleNodeCount = 0;
     this._forceOverrides = {};
     this._autoForceParams = {};
+    this._paused = false;
 
     this._init();
   }
@@ -381,12 +382,19 @@ export class GraphRenderer {
             window.__preTickTicks = done;
           }
           this.fitToView();
-          this.simulation.alpha(0.1).restart();
+          if (!this._paused) {
+            this.simulation.alpha(0.1).restart();
+          }
         }
       };
       requestAnimationFrame(runChunk);
     } else {
-      this.simulation.alpha(0.6).restart();
+      if (!this._paused) {
+        this.simulation.alpha(0.6).restart();
+      } else {
+        this.simulation.stop();
+        this._tick();
+      }
     }
   }
 
@@ -475,7 +483,9 @@ export class GraphRenderer {
     this.simulation.force('y').strength(p.gravity);
     const clusterCenters = this.store.clusterCenters(this.width, this.height);
     this.simulation.force('cluster', forceCluster(clusterCenters, p.clusterStrength));
-    this.simulation.alpha(0.3).restart();
+    if (!this._paused) {
+      this.simulation.alpha(0.3).restart();
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -612,18 +622,49 @@ export class GraphRenderer {
     const sim = this.simulation;
     return d3.drag()
       .on('start', (event, d) => {
-        if (!event.active) sim.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
+        if (this._paused) {
+          d.fx = d.x;
+          d.fy = d.y;
+        } else {
+          if (!event.active) sim.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
       })
       .on('drag', (event, d) => {
         d.fx = event.x;
         d.fy = event.y;
+        if (this._paused) {
+          d.x = event.x;
+          d.y = event.y;
+          this._tick();
+        }
       })
       .on('end', (event, d) => {
-        if (!event.active) sim.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
+        if (this._paused) {
+          d.x = d.fx;
+          d.y = d.fy;
+          d.fx = null;
+          d.fy = null;
+        } else {
+          if (!event.active) sim.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
       });
+  }
+
+  pause() {
+    this._paused = true;
+    this.simulation.stop();
+  }
+
+  resume() {
+    this._paused = false;
+    this.simulation.alpha(0.3).restart();
+  }
+
+  get isPaused() {
+    return this._paused;
   }
 }

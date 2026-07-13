@@ -36,6 +36,7 @@ const legend    = $('#color-legend');
 const forceCtrl = $('#force-controls');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
+const btnPause       = $('#btn-pause');
 const toggleLabels   = $('#toggle-labels input');
 
 /* ------------------------------------------------------------------ */
@@ -106,6 +107,9 @@ function loadGraph(json) {
   statsBar.classList.remove('hidden');
   wireSidebarCollapse($('#sidebar'));
 
+  btnPause.textContent = 'Pause';
+  btnPause.classList.remove('active');
+
   // Stats
   renderStats(statsBar, json.stats, json.generated, store);
 
@@ -137,6 +141,17 @@ function loadGraph(json) {
     selectedNodeId = null;
     renderer?.highlight(null);
     renderDetail(detail, null, [], store);
+  };
+  btnPause.onclick = () => {
+    if (renderer.isPaused) {
+      renderer.resume();
+      btnPause.textContent = 'Pause';
+      btnPause.classList.remove('active');
+    } else {
+      renderer.pause();
+      btnPause.textContent = 'Resume';
+      btnPause.classList.add('active');
+    }
   };
   toggleLabels.onchange = () => {
     if (renderer) {
