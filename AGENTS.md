@@ -12,9 +12,9 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 
 | File | Responsibility |
 |---|---|
-| `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping |
-| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), pulls all visual config from `GraphStore` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip, detail sidebar, collapsible sidebar sections with ARIA |
+| `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping with selectable scale (linear/log/percentile), multi-parent type detection |
+| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), multi-parent visual marker (yellow dashed stroke), pulls all visual config from `GraphStore` |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour scale selector (linear/log/percentile), colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator), detail sidebar, collapsible sidebar sections with ARIA |
 | `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell with semantic landmarks (`<main>`, `<aside>`, `<header>`), ARIA attributes, screen reader live region, loads D3 v7 from CDN, imports `main.js` as ES module |
@@ -32,7 +32,7 @@ File drop/pick → main.js parses JSON
 ## Key Patterns
 
 - **Fully data-driven**: all type colours, edge colours/dashes, node sizes, root types, and filter lists are derived from the loaded JSON at runtime. Nothing is hardcoded to a specific graph schema.
-- **Progressive disclosure**: only root nodes (auto-detected as the type with fewest parentless nodes) visible initially; click expands children, click again collapses recursively.
+- **Progressive disclosure**: only root nodes (auto-detected as any type with at least one parentless node) visible initially; click expands children, click again collapses recursively. All disconnected hierarchies are shown as entry points.
 - **Topology-driven layout**: D3's default link strength (inverse of node degree) keeps children clustered around high-degree parent nodes. New nodes are placed near their parent's position. A weak cluster force acts as a tiebreaker only for large graphs.
 - **Zoom-dependent labels**: labels are created for the top 500 nodes by radius, then shown/hidden based on zoom level. Only nodes whose radius exceeds a threshold at the current zoom scale display labels. Labels are truncated at 24 characters.
 - **Adaptive edge rendering**: edge opacity, stroke width, and arrow markers scale with the number of visible nodes to reduce visual noise in large graphs. When an attr mapping is active, edge weight derives from the target node's attr value.
@@ -42,7 +42,7 @@ File drop/pick → main.js parses JSON
 - **D3 module as global**: D3 is loaded via `<script>` tag (not imported), so `d3` is a global. Don't add `import d3` statements.
 - **No build step**: all JS uses native ES module `import`/`export`. No bundler, no transpiler.
 - **State lives in `GraphStore`**: the renderer is stateless — call `update()` with new visible data after any store mutation. Colours and sizes are accessed via `store.nodeColor()`, `store.colorForType()`, `store.colorForRel()`, `store.nodeRadius()` etc. Selection state (`selectedNodeId`) lives in `main.js`, not in the store or renderer.
-- **Attr-driven visual mapping**: `GraphStore` auto-discovers numeric and categorical attrs from node data. Users can select a "colour by" and "size by" attr via sidebar dropdowns. Numeric attrs map to a heat ramp (cyan→green→yellow→red); categorical attrs map to a distinct colour palette. Nodes missing the active attr fade to low opacity. All mapping is generic — no field names are hardcoded.
+- **Attr-driven visual mapping**: `GraphStore` auto-discovers numeric and categorical attrs from node data. Users can select a "colour by" and "size by" attr via sidebar dropdowns. Numeric attrs map to a heat ramp (cyan→green→yellow→red) with a selectable scale mode (linear, log, or percentile) for handling skewed distributions; categorical attrs map to a distinct colour palette. Nodes missing the active attr fade to low opacity. All mapping is generic — no field names are hardcoded.
 
 ## Input Data Schema
 
@@ -76,7 +76,7 @@ Run GraphStore unit tests with Node's built-in test runner:
 node --test test/data.test.mjs
 ```
 
-103 tests total — 81 covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds; 14 covering attribute discovery, colour-by-attr, size-by-attr, node opacity, and edge weight; 8 covering colour overrides (type, rel, categorical, heat ramp) and legend data. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+116 tests total — 81 covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds; 14 covering attribute discovery, colour-by-attr, size-by-attr, node opacity, and edge weight; 8 covering colour overrides (type, rel, categorical, heat ramp) and legend data; 4 covering multi-root support (all zero-indegree types as roots, reveal across hierarchies, mixed parent/parentless types); 5 covering colour scale modes (linear, log, percentile); 4 covering multi-parent type detection. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
 
 A 9.6K-node test fixture is available at `test/fixtures/sample-large-graph.json` for visual testing.
 
@@ -99,8 +99,9 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 - Node sizes computed by `store.nodeRadius()` using exponential decay across the type hierarchy (roots largest, leaves smallest) plus a child-count area bonus. When a size attr is active, radius derives from the attr value with sqrt scaling.
 - Edge colors/dashes auto-assigned from palettes in `data.js` — accessed via `store.colorForRel()` / `store.dashForRel()`. Edge stroke width and opacity also scale via `store.edgeWeight()` when an attr mapping is active.
 - Expanded nodes have a light stroke to distinguish them from collapsed nodes
-- Tooltip shows up to 4 attrs with "… and more" overflow. When an attr mapping is active, the tooltip dot reflects the mapped colour and active attrs are shown first in bold.
-- Detail panel shows type, ID, all attrs (URLs rendered as links), and up to 50 connections with direction arrows and rel names.
+- Multi-parent nodes (parents of 2+ different types, i.e. DAG diamonds) have a yellow dashed stroke to make the diamond structure visible
+- Tooltip shows up to 4 attrs with "… and more" overflow. Multi-parent nodes display "Multiple parent types" in the tooltip. When an attr mapping is active, the tooltip dot reflects the mapped colour and active attrs are shown first in bold.
+- Detail panel shows type, ID, multi-parent indicator (when applicable), all attrs (URLs rendered as links), and up to 50 connections with direction arrows and rel names.
 - Stats bar shows generated date, total node/edge counts, and per-type colored dot counts.
 - All user-facing text is plain English, no abbreviations
 - No comments unless explaining *why*, not *what*
@@ -110,7 +111,7 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 
 - Semantic HTML landmarks: `<header>` (stats bar), `<main>` (graph), `<aside>` (sidebar)
 - Heading hierarchy: `<h2>` for sidebar section headings, `<h3>` for detail panel node title, `<h4>` for detail sub-sections (Attributes, Connections)
-- All form controls have associated labels: `<label>` with `for`/`id` for selects and sliders, `aria-label` for colour pickers and checkboxes
+- All form controls have associated labels: `<label>` with `for`/`id` for selects (including colour scale selector) and sliders, `aria-label` for colour pickers and checkboxes
 - Drop zone is keyboard-accessible: `role="button"`, `tabindex="0"`, responds to Enter and Space
 - Search implements the ARIA combobox pattern: `role="combobox"` with `aria-expanded`, `aria-autocomplete`, `aria-activedescendant`; results use `role="listbox"` / `role="option"` with `aria-selected`
 - Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
@@ -121,4 +122,5 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 - Tooltip has `role="tooltip"` and `aria-live="polite"`
 - All buttons have explicit `type="button"`
 - `:focus-visible` outlines for keyboard navigation
+- Multi-parent visual marker (`#facc15` yellow dashed stroke) has a non-colour-redundant cue (dash pattern) and a text equivalent in tooltip and detail panel
 - Accent colour (`#818cf8`) chosen to pass WCAG AA contrast on dark backgrounds

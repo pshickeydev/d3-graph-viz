@@ -336,6 +336,30 @@ function _renderNumericLegend(el, legend, store, onChange) {
   const wrapper = document.createElement('div');
   wrapper.className = 'legend-numeric';
 
+  const scaleRow = document.createElement('div');
+  scaleRow.className = 'legend-scale-row';
+  const scaleLabel = document.createElement('label');
+  scaleLabel.className = 'attr-selector-label';
+  scaleLabel.textContent = 'Scale';
+  scaleLabel.htmlFor = 'select-colour-scale';
+  const scaleSelect = document.createElement('select');
+  scaleSelect.className = 'attr-selector';
+  scaleSelect.id = 'select-colour-scale';
+  for (const mode of ['linear', 'log', 'percentile']) {
+    const opt = document.createElement('option');
+    opt.value = mode;
+    opt.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+    scaleSelect.appendChild(opt);
+  }
+  scaleSelect.value = legend.scale || 'linear';
+  scaleSelect.addEventListener('change', () => {
+    store.setColorScale(scaleSelect.value);
+    onChange();
+  });
+  scaleRow.appendChild(scaleLabel);
+  scaleRow.appendChild(scaleSelect);
+  wrapper.appendChild(scaleRow);
+
   const gradStr = legend.stops.join(', ');
   const bar = document.createElement('div');
   bar.className = 'legend-gradient-bar';
@@ -427,6 +451,10 @@ export function showTooltip(tooltipEl, node, event, store) {
     html += `<div class="tooltip-detail">Children: ${node.childCount}</div>`;
   }
 
+  if (store.hasMultipleParentTypes(node.id)) {
+    html += `<div class="tooltip-detail">Multiple parent types</div>`;
+  }
+
   if (node.attrs && typeof node.attrs === 'object') {
     const activeKeys = new Set();
     if (store.colorAttr) activeKeys.add(store.colorAttr);
@@ -510,6 +538,10 @@ export function renderDetail(el, node, edges, store) {
       <div><strong>ID:</strong> <code>${escapeHtml(node.id)}</code></div>
     </div>
   `;
+
+  if (store.hasMultipleParentTypes(node.id)) {
+    html += '<div class="detail-meta"><div><strong>Multiple parent types</strong></div></div>';
+  }
 
   // Attrs table — render all attrs generically
   if (node.attrs && typeof node.attrs === 'object' && Object.keys(node.attrs).length > 0) {

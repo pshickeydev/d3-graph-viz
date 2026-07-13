@@ -167,6 +167,9 @@ export class GraphStore {
     this._catColorOverrides = new Map();
     /** User overrides for heat ramp stops. @type {string[]|null} */
     this._heatRampOverride = null;
+
+    /** Colour scale mode for numeric attrs: 'linear', 'log', or 'percentile'. */
+    this._colorScale = 'linear';
   }
 
   /* ---------------------------------------------------------------- */
@@ -226,6 +229,7 @@ export class GraphStore {
     this._attrSizeCache.clear();
     this._catColorOverrides.clear();
     this._heatRampOverride = null;
+    this._colorScale = 'linear';
 
     const levels = Math.max(this.typeList.length - 1, 1);
     const maxR = 24, minR = 4;
@@ -256,10 +260,9 @@ export class GraphStore {
       }
     }
 
-    // Root types: among types with parentless nodes, pick only the
-    // type(s) with the fewest such nodes.  This avoids treating large
-    // parallel hierarchies (e.g. 288 owner-teams) as roots when a
-    // small true-root type (e.g. 3 segments) exists.
+    // Root types: any type that has at least one parentless node is a
+    // root type, so disconnected hierarchies (e.g. owner-teams alongside
+    // segments) are all reachable in the initial view.
     const parentlessByType = new Map();
     for (const [id, node] of this.nodeMap) {
       if (!hasParent.has(id)) {
@@ -267,16 +270,7 @@ export class GraphStore {
       }
     }
 
-    this.rootTypes = new Set();
-    if (parentlessByType.size > 0) {
-      const minCount = Math.min(...parentlessByType.values());
-      const threshold = Math.max(minCount * 3, 10);
-      for (const [type, count] of parentlessByType) {
-        if (count <= threshold) {
-          this.rootTypes.add(type);
-        }
-      }
-    }
+    this.rootTypes = new Set(parentlessByType.keys());
 
     // Order types by average graph depth (BFS from roots)
     const typeDepthSum = new Map();
@@ -456,6 +450,7 @@ export class GraphStore {
     this._colorAttr = attrKey;
     this._catColorOverrides.clear();
     this._heatRampOverride = null;
+    this._colorScale = 'linear';
     this._rebuildColorCache();
   }
 
@@ -470,6 +465,16 @@ export class GraphStore {
 
   get colorAttr() { return this._colorAttr; }
   get sizeAttr() { return this._sizeAttr; }
+  get colorScale() { return this._colorScale; }
+
+  /**
+   * Set the colour scale mode for numeric attrs.
+   * @param {'linear'|'log'|'percentile'} mode
+   */
+  setColorScale(mode) {
+    this._colorScale = mode;
+    this._rebuildColorCache();
+  }
 
   /**
    * Set a user override for a type colour.
@@ -537,6 +542,7 @@ export class GraphStore {
         min: profile.min,
         max: profile.max,
         stops: [...this.getHeatRamp()],
+        scale: this._colorScale,
       };
     }
     const entries = profile.values.map((v, i) => ({
@@ -561,16 +567,44 @@ export class GraphStore {
     if (profile.kind === 'numeric') {
       const ramp = this.getHeatRamp();
       const { min, max } = profile;
-      const range = max - min || 1;
-      for (const node of this.nodeMap.values()) {
-        const raw = node.attrs?.[attrKey];
-        if (raw == null || raw === '') continue;
-        const num = Number(raw);
-        if (isNaN(num)) continue;
-        const t = (num - min) / range;
-        const idx = Math.min(Math.floor(t * (ramp.length - 1)), ramp.length - 2);
-        const frac = t * (ramp.length - 1) - idx;
-        this._attrColorCache.set(node.id, _lerpColor(ramp[idx], ramp[idx + 1], frac));
+      const scale = this._colorScale;
+
+      if (scale === 'percentile') {
+        const sorted = [];
+        for (const node of this.nodeMap.values()) {
+          const raw = node.attrs?.[attrKey];
+          if (raw == null || raw === '') continue;
+          const num = Number(raw);
+          if (isNaN(num)) continue;
+          sorted.push({ id: node.id, val: num });
+        }
+        sorted.sort((a, b) => a.val - b.val);
+        const count = sorted.length;
+        for (let i = 0; i < count; i++) {
+          const t = count > 1 ? i / (count - 1) : 0.5;
+          const idx = Math.min(Math.floor(t * (ramp.length - 1)), ramp.length - 2);
+          const frac = t * (ramp.length - 1) - idx;
+          this._attrColorCache.set(sorted[i].id, _lerpColor(ramp[idx], ramp[idx + 1], frac));
+        }
+      } else {
+        const useLog = scale === 'log' && min >= 0;
+        const logMin = useLog ? Math.log1p(min) : 0;
+        const logRange = useLog ? (Math.log1p(max) - logMin || 1) : 0;
+        const linRange = max - min || 1;
+
+        for (const node of this.nodeMap.values()) {
+          const raw = node.attrs?.[attrKey];
+          if (raw == null || raw === '') continue;
+          const num = Number(raw);
+          if (isNaN(num)) continue;
+          const t = useLog
+            ? (Math.log1p(num) - logMin) / logRange
+            : (num - min) / linRange;
+          const clamped = Math.max(0, Math.min(1, t));
+          const idx = Math.min(Math.floor(clamped * (ramp.length - 1)), ramp.length - 2);
+          const frac = clamped * (ramp.length - 1) - idx;
+          this._attrColorCache.set(node.id, _lerpColor(ramp[idx], ramp[idx + 1], frac));
+        }
       }
     } else {
       const catColors = new Map();
@@ -925,6 +959,24 @@ export class GraphStore {
    */
   childrenIds(nodeId) {
     return this.childrenOf.get(nodeId) || [];
+  }
+
+  /**
+   * Check whether a node has parents of more than one type (a DAG
+   * diamond). Used by the renderer to add a visual marker.
+   * @param {string} nodeId
+   * @returns {boolean}
+   */
+  hasMultipleParentTypes(nodeId) {
+    const parents = this.parentsOf.get(nodeId);
+    if (!parents || parents.length < 2) return false;
+    const types = new Set();
+    for (const pid of parents) {
+      const pnode = this.nodeMap.get(pid);
+      if (pnode) types.add(pnode.type);
+      if (types.size > 1) return true;
+    }
+    return false;
   }
 }
 

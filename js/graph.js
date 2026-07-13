@@ -296,8 +296,9 @@ export class GraphRenderer {
           .attr('r', (d) => store.nodeRadius(d))
           .attr('fill', (d) => store.nodeColor(d))
           .attr('opacity', (d) => store.nodeOpacity(d))
-          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
-          .attr('stroke-width', (d) => d.expanded ? 2 : 1.5)
+          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : store.hasMultipleParentTypes(d.id) ? '#facc15' : '#1e293b')
+          .attr('stroke-width', (d) => d.expanded ? 2 : store.hasMultipleParentTypes(d.id) ? 2 : 1.5)
+          .attr('stroke-dasharray', (d) => !d.expanded && store.hasMultipleParentTypes(d.id) ? '3,2' : null)
           .attr('cursor', 'pointer')
           .call(this._drag())
           .on('click', (_event, d) => this.onNodeClick(d))
@@ -307,8 +308,9 @@ export class GraphRenderer {
           .attr('r', (d) => store.nodeRadius(d))
           .attr('fill', (d) => store.nodeColor(d))
           .attr('opacity', (d) => store.nodeOpacity(d))
-          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : '#1e293b')
-          .attr('stroke-width', (d) => d.expanded ? 2 : 1.5),
+          .attr('stroke', (d) => d.expanded ? '#e2e8f0' : store.hasMultipleParentTypes(d.id) ? '#facc15' : '#1e293b')
+          .attr('stroke-width', (d) => d.expanded ? 2 : store.hasMultipleParentTypes(d.id) ? 2 : 1.5)
+          .attr('stroke-dasharray', (d) => !d.expanded && store.hasMultipleParentTypes(d.id) ? '3,2' : null),
         (exit) => exit.remove(),
       );
 

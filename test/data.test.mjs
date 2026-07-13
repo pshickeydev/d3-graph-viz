@@ -727,6 +727,238 @@ describe('getColorLegend', () => {
 });
 
 /* ================================================================
+ *  Multi-root support
+ * ================================================================ */
+
+describe('multi-root support', () => {
+  test('all zero-indegree types become root types', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'seg1', type: 'segment', label: 'Segment 1' },
+        { id: 'seg2', type: 'segment', label: 'Segment 2' },
+        ...Array.from({ length: 200 }, (_, i) => ({
+          id: `owner-${i}`, type: 'owner-team', label: `Team ${i}`,
+        })),
+        { id: 'repo1', type: 'repo', label: 'Repo 1' },
+      ],
+      edges: [
+        { from: 'seg1', to: 'repo1', rel: 'contains' },
+        { from: 'owner-0', to: 'repo1', rel: 'owns' },
+      ],
+    });
+    assert.ok(store.rootTypes.has('segment'), 'segment should be a root type');
+    assert.ok(store.rootTypes.has('owner-team'), 'owner-team should be a root type');
+  });
+
+  test('all root types visible initially', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'seg1', type: 'segment', label: 'Segment 1' },
+        ...Array.from({ length: 50 }, (_, i) => ({
+          id: `team-${i}`, type: 'team', label: `Team ${i}`,
+        })),
+        { id: 'repo1', type: 'repo', label: 'Repo 1' },
+      ],
+      edges: [
+        { from: 'seg1', to: 'repo1', rel: 'contains' },
+        { from: 'team-0', to: 'repo1', rel: 'owns' },
+      ],
+    });
+    const visible = store.getVisible();
+    const visibleIds = new Set(visible.nodes.map(n => n.id));
+    assert.ok(visibleIds.has('seg1'), 'segment root should be visible');
+    for (let i = 0; i < 50; i++) {
+      assert.ok(visibleIds.has(`team-${i}`), `team-${i} should be visible`);
+    }
+    assert.ok(!visibleIds.has('repo1'), 'repo child should not be visible initially');
+  });
+
+  test('reveal works for children under any root hierarchy', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'seg1', type: 'segment', label: 'Segment 1' },
+        ...Array.from({ length: 50 }, (_, i) => ({
+          id: `team-${i}`, type: 'team', label: `Team ${i}`,
+        })),
+        { id: 'repo1', type: 'repo', label: 'Repo 1' },
+      ],
+      edges: [
+        { from: 'seg1', to: 'repo1', rel: 'contains' },
+        { from: 'team-0', to: 'repo1', rel: 'owns' },
+      ],
+    });
+    store.reveal('repo1');
+    const visible = store.getVisible();
+    const visibleIds = new Set(visible.nodes.map(n => n.id));
+    assert.ok(visibleIds.has('repo1'), 'repo should be visible after reveal');
+    assert.ok(store.expanded.has('seg1'), 'segment parent should be expanded');
+    assert.ok(store.expanded.has('team-0'), 'team parent should be expanded');
+  });
+
+  test('types with mixed parentless and parented nodes are root types', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'cat1', type: 'category', label: 'Category 1' },
+        { id: 'cat2', type: 'category', label: 'Category 2' },
+        { id: 'item1', type: 'item', label: 'Item 1' },
+      ],
+      edges: [
+        { from: 'cat1', to: 'cat2', rel: 'contains' },
+        { from: 'cat2', to: 'item1', rel: 'contains' },
+      ],
+    });
+    assert.ok(store.rootTypes.has('category'),
+      'category should be root (cat1 is parentless)');
+    const visible = store.getVisible();
+    const visibleIds = new Set(visible.nodes.map(n => n.id));
+    assert.ok(visibleIds.has('cat1'), 'parentless cat1 should be visible');
+    assert.ok(!visibleIds.has('cat2'), 'parented cat2 should not be visible initially');
+  });
+});
+
+/* ================================================================
+ *  Colour scale modes (log / percentile)
+ * ================================================================ */
+
+describe('colour scale modes', () => {
+  function createSkewedStore() {
+    const store = new GraphStore();
+    const nodes = [];
+    for (let i = 0; i < 100; i++) {
+      nodes.push({
+        id: `n${i}`, type: 'item', label: `Item ${i}`,
+        attrs: { value: i < 95 ? i : i * 100 },
+      });
+    }
+    store.load({ nodes, edges: [] });
+    return store;
+  }
+
+  test('setColorScale changes the scale mode', () => {
+    const store = createSkewedStore();
+    assert.equal(store.colorScale, 'linear');
+    store.setColorAttr('value');
+    store.setColorScale('log');
+    assert.equal(store.colorScale, 'log');
+  });
+
+  test('log scale spreads out skewed values', () => {
+    const store = createSkewedStore();
+    store.setColorAttr('value');
+
+    const linearColor50 = store.nodeColor(store.nodeMap.get('n50'));
+    const linearColor95 = store.nodeColor(store.nodeMap.get('n95'));
+
+    store.setColorScale('log');
+    const logColor50 = store.nodeColor(store.nodeMap.get('n50'));
+    const logColor95 = store.nodeColor(store.nodeMap.get('n95'));
+
+    assert.notEqual(logColor50, linearColor50,
+      'log and linear should produce different colours for mid-range values');
+  });
+
+  test('percentile scale ranks values evenly', () => {
+    const store = createSkewedStore();
+    store.setColorAttr('value');
+    store.setColorScale('percentile');
+
+    const c0 = store.nodeColor(store.nodeMap.get('n0'));
+    const c50 = store.nodeColor(store.nodeMap.get('n49'));
+    const c99 = store.nodeColor(store.nodeMap.get('n99'));
+
+    assert.notEqual(c0, c99, 'min and max should have different colours');
+    assert.notEqual(c0, c50, 'min and median should have different colours');
+  });
+
+  test('setColorAttr resets scale to linear', () => {
+    const store = createSkewedStore();
+    store.setColorAttr('value');
+    store.setColorScale('log');
+    assert.equal(store.colorScale, 'log');
+    store.setColorAttr('value');
+    assert.equal(store.colorScale, 'linear');
+  });
+
+  test('getColorLegend includes scale mode', () => {
+    const store = createSkewedStore();
+    store.setColorAttr('value');
+    store.setColorScale('percentile');
+    const legend = store.getColorLegend();
+    assert.equal(legend.scale, 'percentile');
+  });
+});
+
+/* ================================================================
+ *  Multi-parent type detection
+ * ================================================================ */
+
+describe('hasMultipleParentTypes', () => {
+  test('returns true for nodes with parents of different types', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'product1', type: 'product', label: 'Product 1' },
+        { id: 'team1', type: 'team', label: 'Team 1' },
+        { id: 'repo1', type: 'repo', label: 'Repo 1' },
+      ],
+      edges: [
+        { from: 'product1', to: 'repo1', rel: 'contains' },
+        { from: 'team1', to: 'repo1', rel: 'owns' },
+      ],
+    });
+    assert.ok(store.hasMultipleParentTypes('repo1'));
+  });
+
+  test('returns false for nodes with parents of the same type', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'cat1', type: 'category', label: 'Cat 1' },
+        { id: 'cat2', type: 'category', label: 'Cat 2' },
+        { id: 'item1', type: 'item', label: 'Item 1' },
+      ],
+      edges: [
+        { from: 'cat1', to: 'item1', rel: 'contains' },
+        { from: 'cat2', to: 'item1', rel: 'contains' },
+      ],
+    });
+    assert.ok(!store.hasMultipleParentTypes('item1'));
+  });
+
+  test('returns false for root nodes (no parents)', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'root1', type: 'root', label: 'Root 1' },
+        { id: 'child1', type: 'child', label: 'Child 1' },
+      ],
+      edges: [
+        { from: 'root1', to: 'child1', rel: 'contains' },
+      ],
+    });
+    assert.ok(!store.hasMultipleParentTypes('root1'));
+  });
+
+  test('returns false for single-parent nodes', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'root1', type: 'root', label: 'Root 1' },
+        { id: 'child1', type: 'child', label: 'Child 1' },
+      ],
+      edges: [
+        { from: 'root1', to: 'child1', rel: 'contains' },
+      ],
+    });
+    assert.ok(!store.hasMultipleParentTypes('child1'));
+  });
+});
+
+/* ================================================================
  *  Size-specific performance & correctness
  * ================================================================ */
 

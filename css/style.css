@@ -569,6 +569,17 @@ html, body {
   gap: 4px;
 }
 
+.legend-scale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.legend-scale-row .attr-selector {
+  flex: 1;
+}
+
 .legend-gradient-bar {
   height: 14px;
   border-radius: 4px;
