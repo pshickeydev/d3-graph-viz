@@ -12,32 +12,32 @@
   <div id="app">
 
     <!-- Stats summary bar -->
-    <div id="stats-bar" class="hidden"></div>
+    <header id="stats-bar" class="hidden" aria-label="Graph statistics"></header>
 
     <div id="main">
       <!-- Graph canvas -->
-      <div id="graph-container">
-        <div id="loading-overlay" class="hidden">
+      <main id="graph-container">
+        <div id="loading-overlay" class="hidden" role="status" aria-live="assertive">
           <div class="loading-content">
-            <div class="loading-spinner"></div>
+            <div class="loading-spinner" aria-hidden="true"></div>
             <div class="loading-text">Computing layout...</div>
           </div>
         </div>
         <!-- Drop zone (shown until file is loaded) -->
-        <div id="drop-zone">
-          <div class="drop-icon">📊</div>
+        <div id="drop-zone" role="button" tabindex="0" aria-label="Upload graph JSON file">
+          <div class="drop-icon" aria-hidden="true">📊</div>
           <div class="drop-text">Drop a graph JSON file here</div>
-          <div class="drop-hint">or click to browse</div>
+          <div class="drop-hint">or press Enter to browse</div>
         </div>
-      </div>
+      </main>
 
       <!-- Sidebar -->
-      <div id="sidebar" class="hidden">
+      <aside id="sidebar" class="hidden" aria-label="Graph controls">
         <!-- Graph actions -->
         <div class="sidebar-section sidebar-actions">
-          <button id="btn-expand-all" class="action-btn">Expand All</button>
-          <button id="btn-collapse-all" class="action-btn">Collapse All</button>
-          <button id="btn-pause" class="action-btn">Pause</button>
+          <button id="btn-expand-all" type="button" class="action-btn">Expand All</button>
+          <button id="btn-collapse-all" type="button" class="action-btn">Collapse All</button>
+          <button id="btn-pause" type="button" class="action-btn">Pause</button>
           <label class="action-toggle" id="toggle-labels">
             <input type="checkbox" checked>
             <span>Labels</span>
@@ -46,24 +46,25 @@
 
         <!-- Search -->
         <div class="sidebar-section">
-          <h4>Search</h4>
+          <h2 class="sidebar-heading">Search</h2>
           <div class="sidebar-section-body">
-            <input id="search-input" type="text" placeholder="Search nodes…">
-            <div id="search-results" class="hidden"></div>
+            <label for="search-input" class="sr-only">Search nodes</label>
+            <input id="search-input" type="text" placeholder="Search nodes…" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="search-results">
+            <div id="search-results" class="hidden" role="listbox" aria-label="Search results"></div>
           </div>
         </div>
 
         <!-- Type filters -->
         <div class="sidebar-section">
-          <h4>Node Types</h4>
+          <h2 class="sidebar-heading">Node Types</h2>
           <div class="sidebar-section-body">
-            <div id="type-filters"></div>
+            <div id="type-filters" role="group" aria-label="Filter by node type"></div>
           </div>
         </div>
 
         <!-- Attribute mapping -->
         <div class="sidebar-section">
-          <h4>Visual Mapping</h4>
+          <h2 class="sidebar-heading">Visual Mapping</h2>
           <div class="sidebar-section-body">
             <div id="attr-selectors"></div>
             <div id="color-legend" class="hidden"></div>
@@ -72,7 +73,7 @@
 
         <!-- Force controls -->
         <div class="sidebar-section">
-          <h4>Forces</h4>
+          <h2 class="sidebar-heading">Forces</h2>
           <div class="sidebar-section-body">
             <div id="force-controls"></div>
           </div>
@@ -80,19 +81,22 @@
 
         <!-- Detail panel -->
         <div class="sidebar-section sidebar-section-flex" style="flex:1; border-bottom:none;">
-          <h4>Details</h4>
+          <h2 class="sidebar-heading">Details</h2>
           <div class="sidebar-section-body" style="flex:1; overflow-y:auto;">
-            <div id="detail-panel">
+            <div id="detail-panel" aria-live="polite">
               <div class="detail-empty">Click a node to see details</div>
             </div>
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   </div>
 
   <!-- Tooltip (positioned absolutely) -->
-  <div id="tooltip" class="hidden"></div>
+  <div id="tooltip" class="hidden" role="tooltip" aria-live="polite"></div>
+
+  <!-- Live region for screen reader announcements -->
+  <div id="sr-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Hidden file input -->
   <input id="file-input" type="file" accept=".json" style="display:none">

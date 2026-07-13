@@ -9,7 +9,7 @@
   --text:         #e2e8f0;
   --text-muted:   #94a3b8;
   --border:       #334155;
-  --accent:       #6366f1;
+  --accent:       #818cf8;
   --sidebar-w:    340px;
   --stats-h:      42px;
 }
@@ -137,7 +137,6 @@ html, body {
 #drop-zone .drop-hint {
   font-size: 13px;
   color: var(--text-muted);
-  opacity: 0.6;
 }
 
 #drop-zone.drag-over {
@@ -174,7 +173,7 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
-.sidebar-section h4 {
+.sidebar-section .sidebar-heading {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -185,13 +184,14 @@ html, body {
   align-items: center;
   gap: 6px;
   user-select: none;
+  font-weight: 600;
 }
 
-.sidebar-section h4:hover {
+.sidebar-section .sidebar-heading:hover {
   color: var(--text);
 }
 
-.sidebar-section h4::before {
+.sidebar-section .sidebar-heading::before {
   content: '';
   display: inline-block;
   width: 0;
@@ -203,11 +203,11 @@ html, body {
   flex-shrink: 0;
 }
 
-.sidebar-section.collapsed h4 {
+.sidebar-section.collapsed .sidebar-heading {
   margin-bottom: 0;
 }
 
-.sidebar-section.collapsed h4::before {
+.sidebar-section.collapsed .sidebar-heading::before {
   transform: rotate(-90deg);
 }
 
@@ -262,7 +262,8 @@ html, body {
   cursor: pointer;
 }
 
-.search-result-item:hover {
+.search-result-item:hover,
+.search-result-item.active {
   background: var(--bg-hover);
 }
 
@@ -632,7 +633,7 @@ html, body {
   margin-bottom: 12px;
 }
 
-.detail-header h3 {
+.detail-header .detail-title {
   font-size: 16px;
   word-break: break-word;
 }
@@ -661,7 +662,7 @@ html, body {
   margin-bottom: 16px;
 }
 
-.detail-section h4 {
+.detail-section-heading {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -772,3 +773,27 @@ html, body {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Screen-reader-only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus-visible outlines for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#drop-zone:focus-visible {
+  border-color: var(--accent);
+  background: rgba(129, 140, 248, 0.08);
+}

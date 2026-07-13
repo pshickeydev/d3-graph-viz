@@ -12,10 +12,10 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 |---|---|
 | `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping |
 | `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), pulls all visual config from `GraphStore` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour legend (gradient bar or categorical swatches, all editable), search wiring, tooltip, detail sidebar |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip, detail sidebar, collapsible sidebar sections with ARIA |
 | `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic |
 | `css/style.css` | Dark theme, layout, all component styles |
-| `index.html` | App shell, loads D3 v7 from CDN, imports `main.js` as ES module |
+| `index.html` | App shell with semantic landmarks (`<main>`, `<aside>`, `<header>`), ARIA attributes, screen reader live region, loads D3 v7 from CDN, imports `main.js` as ES module |
 
 ## Data Flow
 
@@ -86,9 +86,9 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 - **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and detail panel.
 - **Pause / Resume**: freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. Button text and style toggle between "Pause" and "Resume".
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
-- **Search**: 200ms debounce, minimum 2 characters, results capped to 20. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node. Pressing Escape clears the search.
+- **Search**: implements the ARIA combobox/listbox pattern. 200ms debounce, minimum 2 characters, results capped to 20. Arrow Up/Down navigates results, Enter selects, Escape clears. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node.
 - **Force controls**: five sliders (Repulsion, Link distance, Gravity, Collision pad, Clustering) with a "Reset forces" button. Forces are auto-tuned based on node count; user overrides are stored separately and merged at runtime. Sliders only auto-refresh when no user overrides exist.
-- **Collapsible sidebar sections**: every `<h4>` inside a `.sidebar-section` toggles a `.collapsed` class on click.
+- **Collapsible sidebar sections**: every `<h2 class="sidebar-heading">` inside a `.sidebar-section` acts as a toggle button (`role="button"`, `tabindex="0"`) with `aria-expanded` and `aria-controls`. Supports click, Enter, and Space.
 
 ## Conventions
 
@@ -103,3 +103,20 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 - All user-facing text is plain English, no abbreviations
 - No comments unless explaining *why*, not *what*
 - Use `removeAttribute('display')` rather than `setAttribute('display', null)` for cross-browser compatibility (Firefox treats null as the literal string "null")
+
+## Accessibility
+
+- Semantic HTML landmarks: `<header>` (stats bar), `<main>` (graph), `<aside>` (sidebar)
+- Heading hierarchy: `<h2>` for sidebar section headings, `<h3>` for detail panel node title, `<h4>` for detail sub-sections (Attributes, Connections)
+- All form controls have associated labels: `<label>` with `for`/`id` for selects and sliders, `aria-label` for colour pickers and checkboxes
+- Drop zone is keyboard-accessible: `role="button"`, `tabindex="0"`, responds to Enter and Space
+- Search implements the ARIA combobox pattern: `role="combobox"` with `aria-expanded`, `aria-autocomplete`, `aria-activedescendant`; results use `role="listbox"` / `role="option"` with `aria-selected`
+- Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
+- SVG has `role="img"` and `aria-label`
+- Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load and node selection
+- Detail panel uses `aria-live="polite"` for content updates
+- Loading overlay uses `role="status"` with `aria-live="assertive"`
+- Tooltip has `role="tooltip"` and `aria-live="polite"`
+- All buttons have explicit `type="button"`
+- `:focus-visible` outlines for keyboard navigation
+- Accent colour (`#818cf8`) chosen to pass WCAG AA contrast on dark backgrounds

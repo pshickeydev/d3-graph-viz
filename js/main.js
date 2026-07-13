@@ -38,6 +38,7 @@ const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const btnPause       = $('#btn-pause');
 const toggleLabels   = $('#toggle-labels input');
+const srAnnounce     = $('#sr-announcements');
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -46,6 +47,13 @@ const toggleLabels   = $('#toggle-labels input');
 const store = new GraphStore();
 let renderer = null;
 let selectedNodeId = null;
+
+function announce(message) {
+  if (srAnnounce) {
+    srAnnounce.textContent = '';
+    requestAnimationFrame(() => { srAnnounce.textContent = message; });
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /*  File loading                                                       */
@@ -85,8 +93,14 @@ fileInput.addEventListener('change', (e) => {
   if (file) handleFile(file);
 });
 
-// Click drop zone to open picker
+// Click or keyboard activate drop zone to open picker
 dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    fileInput.click();
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /*  Graph lifecycle                                                    */
@@ -106,6 +120,7 @@ function loadGraph(json) {
   $('#sidebar').classList.remove('hidden');
   statsBar.classList.remove('hidden');
   wireSidebarCollapse($('#sidebar'));
+  announce(`Graph loaded: ${store.nodeMap.size} nodes, ${store.raw.edges.length} edges`);
 
   btnPause.textContent = 'Pause';
   btnPause.classList.remove('active');
@@ -223,6 +238,7 @@ function selectNode(nodeId) {
   const edges = store.edgesForNode(nodeId);
   renderDetail(detail, node, edges, store);
   highlightNode(nodeId);
+  announce(`Selected ${node?.label || node?.id || nodeId}, ${edges.length} connections`);
 }
 
 function highlightNode(nodeId) {

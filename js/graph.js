@@ -91,7 +91,9 @@ export class GraphRenderer {
       .append('svg')
       .attr('width', '100%')
       .attr('height', '100%')
-      .attr('viewBox', `0 0 ${width} ${height}`);
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('role', 'img')
+      .attr('aria-label', 'Interactive force-directed graph visualization');
 
     this.svg.append('defs');
 

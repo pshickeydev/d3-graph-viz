@@ -28,11 +28,14 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Edge styling** — colours and dash patterns auto-assigned per relationship type, with directional arrows (arrows hidden for large graphs to reduce clutter)
 - **Adaptive rendering** — edge opacity, stroke width, and label density scale with the number of visible nodes
 - **Zoom-dependent labels** — labels appear progressively as you zoom in; only the most prominent nodes are labelled at overview zoom
-- **Search** — find nodes by label or ID with instant results
+- **Search** — find nodes by label or ID with instant results; full keyboard navigation (Arrow keys, Enter, Escape)
 - **Type filters** — toggle node types on/off, with node counts per type
 - **Detail sidebar** — click any node to see full attributes, connections, and links
 - **Tooltip** — hover for quick node summary; active mapping attributes shown first in bold
-- **Highlight** — hover or select a node to dim unrelated nodes and edges
+- **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
+- **Force simulation controls** — tune Repulsion, Link distance, Gravity, Collision pad, and Clustering via sidebar sliders; reset to auto-tuned defaults
+- **Pause / Resume** — freeze the force simulation while still allowing node dragging
+- **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
 
 ## Expected Input Format
 
@@ -66,14 +69,14 @@ The viewer accepts any JSON file with a `nodes` array and an `edges` array. All 
 
 ```
 d3-graph-viz/
-├── index.html          # Single-page app shell
+├── index.html          # App shell with semantic landmarks and ARIA
 ├── css/
-│   └── style.css       # Layout, node/edge colours, sidebar
+│   └── style.css       # Dark theme, layout, focus styles, sr-only utility
 ├── js/
-│   ├── main.js         # Entry: file load, wiring
+│   ├── main.js         # Entry: file load, wiring, selection state, screen reader announcements
 │   ├── graph.js        # D3 force simulation, render, zoom/pan
 │   ├── data.js         # Parse/validate JSON, adjacency, expand/collapse, attr discovery & mapping
-│   └── ui.js           # Sidebar, search, filters, attr selectors, tooltips, stats bar
+│   └── ui.js           # Sidebar, search (combobox pattern), filters, attr selectors, tooltips, collapsible sections
 ├── test/
 │   ├── data.test.mjs   # GraphStore unit tests
 │   ├── expand_all.test.mjs

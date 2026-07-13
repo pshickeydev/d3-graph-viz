@@ -65,8 +65,8 @@ export function renderTypeFilters(el, store, onChange, onColorChange) {
     const label = document.createElement('label');
     label.className = 'filter-item';
     label.innerHTML = `
-      <input type="checkbox" data-type="${escapeHtml(type)}" ${checked}>
-      <input type="color" class="filter-color" value="${color}" title="Change colour">
+      <input type="checkbox" data-type="${escapeHtml(type)}" ${checked} aria-label="Show ${escapeHtml(type)} nodes">
+      <input type="color" class="filter-color" value="${color}" aria-label="Change colour for ${escapeHtml(type)}">
       ${escapeHtml(type)}
       <span class="filter-count">${count.toLocaleString()}</span>
     `;
@@ -97,6 +97,35 @@ export function renderTypeFilters(el, store, onChange, onColorChange) {
  */
 export function wireSearch(input, resultsList, store, onSelect) {
   let debounceTimer = null;
+  let activeIndex = -1;
+
+  function updateAriaExpanded() {
+    const open = !resultsList.classList.contains('hidden') && resultsList.children.length > 0;
+    input.setAttribute('aria-expanded', String(open));
+  }
+
+  function setActiveDescendant(index) {
+    const items = resultsList.querySelectorAll('[role="option"]');
+    items.forEach((item, i) => {
+      item.classList.toggle('active', i === index);
+      item.setAttribute('aria-selected', String(i === index));
+    });
+    activeIndex = index;
+    if (index >= 0 && items[index]) {
+      input.setAttribute('aria-activedescendant', items[index].id);
+      items[index].scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function selectItem(nodeId) {
+    onSelect(nodeId);
+    resultsList.innerHTML = '';
+    resultsList.classList.add('hidden');
+    activeIndex = -1;
+    updateAriaExpanded();
+  }
 
   const onInput = () => {
     clearTimeout(debounceTimer);
@@ -105,18 +134,40 @@ export function wireSearch(input, resultsList, store, onSelect) {
       if (query.length < 2) {
         resultsList.innerHTML = '';
         resultsList.classList.add('hidden');
+        activeIndex = -1;
+        updateAriaExpanded();
         return;
       }
       const results = store.search(query);
-      renderSearchResults(resultsList, results, store, onSelect);
+      activeIndex = -1;
+      renderSearchResults(resultsList, results, store, selectItem);
+      updateAriaExpanded();
     }, 200);
   };
 
   const onKeydown = (e) => {
+    const items = resultsList.querySelectorAll('[role="option"]');
     if (e.key === 'Escape') {
       input.value = '';
       resultsList.innerHTML = '';
       resultsList.classList.add('hidden');
+      activeIndex = -1;
+      updateAriaExpanded();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (items.length > 0) {
+        setActiveDescendant(activeIndex < items.length - 1 ? activeIndex + 1 : 0);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (items.length > 0) {
+        setActiveDescendant(activeIndex > 0 ? activeIndex - 1 : items.length - 1);
+      }
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && items[activeIndex]) {
+        e.preventDefault();
+        items[activeIndex].click();
+      }
     }
   };
 
@@ -129,29 +180,33 @@ export function wireSearch(input, resultsList, store, onSelect) {
   input.value = '';
   resultsList.innerHTML = '';
   resultsList.classList.add('hidden');
+  updateAriaExpanded();
 }
 
 function renderSearchResults(el, results, store, onSelect) {
   el.innerHTML = '';
   if (results.length === 0) {
-    el.innerHTML = '<div class="search-result-item">No results</div>';
+    el.innerHTML = '<div class="search-result-item" role="option" aria-disabled="true">No results</div>';
     el.classList.remove('hidden');
     return;
   }
 
-  for (const node of results.slice(0, 20)) {
+  const items = results.slice(0, 20);
+  for (let i = 0; i < items.length; i++) {
+    const node = items[i];
     const color = store.colorForType(node.type);
     const item = document.createElement('div');
     item.className = 'search-result-item';
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', 'false');
+    item.id = `search-option-${i}`;
     item.innerHTML = `
-      <span class="filter-dot" style="background:${color}"></span>
+      <span class="filter-dot" style="background:${color}" aria-hidden="true"></span>
       <span class="search-label">${escapeHtml(node.label || node.id)}</span>
       <span class="search-type">${escapeHtml(node.type)}</span>
     `;
     item.addEventListener('click', () => {
       onSelect(node.id);
-      el.innerHTML = '';
-      el.classList.add('hidden');
     });
     el.appendChild(item);
   }
@@ -184,11 +239,13 @@ export function renderAttrSelectors(el, store, onChange) {
   if (colorAttrs.length > 0) {
     const row = document.createElement('div');
     row.className = 'attr-selector-row';
-    const label = document.createElement('span');
+    const label = document.createElement('label');
     label.className = 'attr-selector-label';
     label.textContent = 'Colour by';
+    label.htmlFor = 'select-colour-by';
     const select = document.createElement('select');
     select.className = 'attr-selector';
+    select.id = 'select-colour-by';
 
     const none = document.createElement('option');
     none.value = '';
@@ -215,11 +272,13 @@ export function renderAttrSelectors(el, store, onChange) {
   if (sizeAttrs.length > 0) {
     const row = document.createElement('div');
     row.className = 'attr-selector-row';
-    const label = document.createElement('span');
+    const label = document.createElement('label');
     label.className = 'attr-selector-label';
     label.textContent = 'Size by';
+    label.htmlFor = 'select-size-by';
     const select = document.createElement('select');
     select.className = 'attr-selector';
+    select.id = 'select-size-by';
 
     const none = document.createElement('option');
     none.value = '';
@@ -290,7 +349,7 @@ function _renderNumericLegend(el, legend, store, onChange) {
     input.type = 'color';
     input.className = 'legend-stop-picker';
     input.value = legend.stops[i];
-    input.title = `Ramp stop ${i + 1}`;
+    input.setAttribute('aria-label', `Heat ramp stop ${i + 1}`);
     input.addEventListener('input', () => {
       store.setHeatRampStop(i, input.value);
       const newStops = store.getHeatRamp();
@@ -320,7 +379,7 @@ function _renderCategoricalLegend(el, legend, store, onChange) {
     input.type = 'color';
     input.className = 'legend-cat-picker';
     input.value = entry.color;
-    input.title = entry.value;
+    input.setAttribute('aria-label', `Change colour for ${entry.value}`);
     input.addEventListener('input', () => {
       store.setCatColor(entry.value, input.value);
       onChange();
@@ -444,7 +503,7 @@ export function renderDetail(el, node, edges, store) {
   let html = `
     <div class="detail-header">
       <span class="detail-dot" style="background:${color}"></span>
-      <h3>${escapeHtml(node.label || node.id)}</h3>
+      <h3 class="detail-title">${escapeHtml(node.label || node.id)}</h3>
     </div>
     <div class="detail-meta">
       <div><strong>Type:</strong> ${escapeHtml(node.type)}</div>
@@ -454,7 +513,7 @@ export function renderDetail(el, node, edges, store) {
 
   // Attrs table — render all attrs generically
   if (node.attrs && typeof node.attrs === 'object' && Object.keys(node.attrs).length > 0) {
-    html += '<div class="detail-section"><h4>Attributes</h4><table class="detail-table">';
+    html += '<div class="detail-section"><h4 class="detail-section-heading">Attributes</h4><table class="detail-table">';
     for (const [key, val] of Object.entries(node.attrs)) {
       let display;
       if (typeof val === 'string' && isUrl(val)) {
@@ -471,7 +530,7 @@ export function renderDetail(el, node, edges, store) {
 
   // Connected edges
   if (edges.length > 0) {
-    html += `<div class="detail-section"><h4>Connections (${edges.length})</h4><ul class="detail-edges">`;
+    html += `<div class="detail-section"><h4 class="detail-section-heading">Connections (${edges.length})</h4><ul class="detail-edges">`;
     const shown = edges.slice(0, 50);
     for (const e of shown) {
       const otherId = e.from === node.id ? e.to : e.from;
@@ -516,6 +575,7 @@ export function renderForceControls(el, renderer, onChange) {
     const lbl = document.createElement('label');
     lbl.className = 'force-control-label';
     lbl.textContent = p.label;
+    lbl.htmlFor = `force-${p.key}`;
 
     const val = document.createElement('span');
     val.className = 'force-control-value';
@@ -526,6 +586,7 @@ export function renderForceControls(el, renderer, onChange) {
     const input = document.createElement('input');
     input.type = 'range';
     input.className = 'force-slider';
+    input.id = `force-${p.key}`;
     input.min = p.min;
     input.max = p.max;
     input.step = p.step;
@@ -547,6 +608,7 @@ export function renderForceControls(el, renderer, onChange) {
 
   const resetBtn = document.createElement('button');
   resetBtn.className = 'action-btn';
+  resetBtn.type = 'button';
   resetBtn.textContent = 'Reset forces';
   resetBtn.style.marginTop = '8px';
   resetBtn.addEventListener('click', () => {
@@ -568,11 +630,32 @@ function formatForceValue(v, param) {
 /* ------------------------------------------------------------------ */
 
 export function wireSidebarCollapse(sidebar) {
-  for (const h4 of sidebar.querySelectorAll('.sidebar-section > h4')) {
-    if (h4._collapseWired) continue;
-    h4._collapseWired = true;
-    h4.addEventListener('click', () => {
-      h4.closest('.sidebar-section').classList.toggle('collapsed');
+  for (const heading of sidebar.querySelectorAll('.sidebar-section > .sidebar-heading')) {
+    if (heading._collapseWired) continue;
+    heading._collapseWired = true;
+
+    heading.setAttribute('role', 'button');
+    heading.setAttribute('tabindex', '0');
+    const section = heading.closest('.sidebar-section');
+    const isCollapsed = section.classList.contains('collapsed');
+    heading.setAttribute('aria-expanded', String(!isCollapsed));
+
+    const body = section.querySelector('.sidebar-section-body');
+    if (body) {
+      if (!body.id) body.id = `section-body-${Math.random().toString(36).slice(2, 8)}`;
+      heading.setAttribute('aria-controls', body.id);
+    }
+
+    const toggle = () => {
+      section.classList.toggle('collapsed');
+      heading.setAttribute('aria-expanded', String(!section.classList.contains('collapsed')));
+    };
+    heading.addEventListener('click', toggle);
+    heading.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
     });
   }
 }
