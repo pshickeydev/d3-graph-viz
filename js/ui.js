@@ -607,10 +607,9 @@ export function renderForceControls(el, renderer, onChange) {
   }
 
   const resetBtn = document.createElement('button');
-  resetBtn.className = 'action-btn';
+  resetBtn.className = 'action-btn reset-forces-btn';
   resetBtn.type = 'button';
   resetBtn.textContent = 'Reset forces';
-  resetBtn.style.marginTop = '8px';
   resetBtn.addEventListener('click', () => {
     renderer.clearForceOverrides();
     renderForceControls(el, renderer, onChange);

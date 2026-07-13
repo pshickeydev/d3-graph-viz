@@ -122,8 +122,9 @@ function loadGraph(json) {
   wireSidebarCollapse($('#sidebar'));
   announce(`Graph loaded: ${store.nodeMap.size} nodes, ${store.raw.edges.length} edges`);
 
-  btnPause.textContent = 'Pause';
-  btnPause.classList.remove('active');
+  btnPause.classList.remove('hidden');
+  btnPause.classList.remove('paused');
+  btnPause.setAttribute('aria-label', 'Pause simulation');
 
   // Stats
   renderStats(statsBar, json.stats, json.generated, store);
@@ -160,12 +161,12 @@ function loadGraph(json) {
   btnPause.onclick = () => {
     if (renderer.isPaused) {
       renderer.resume();
-      btnPause.textContent = 'Pause';
-      btnPause.classList.remove('active');
+      btnPause.classList.remove('paused');
+      btnPause.setAttribute('aria-label', 'Pause simulation');
     } else {
       renderer.pause();
-      btnPause.textContent = 'Resume';
-      btnPause.classList.add('active');
+      btnPause.classList.add('paused');
+      btnPause.setAttribute('aria-label', 'Resume simulation');
     }
   };
   toggleLabels.onchange = () => {

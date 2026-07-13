@@ -34,7 +34,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Tooltip** — hover for quick node summary; active mapping attributes shown first in bold
 - **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
 - **Force simulation controls** — tune Repulsion, Link distance, Gravity, Collision pad, and Clustering via sidebar sliders; reset to auto-tuned defaults
-- **Pause / Resume** — freeze the force simulation while still allowing node dragging
+- **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-right corner of the graph; freeze the force simulation while still allowing node dragging
 - **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
 
 ## Expected Input Format

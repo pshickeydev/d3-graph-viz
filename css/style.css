@@ -108,6 +108,52 @@ html, body {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Pause/resume overlay                                               */
+/* ------------------------------------------------------------------ */
+
+.pause-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 15;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.5);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s, background 0.2s;
+  padding: 0;
+}
+
+.pause-overlay:hover,
+.pause-overlay:focus-visible {
+  opacity: 1;
+  background: rgba(30, 41, 59, 0.85);
+  color: var(--text);
+}
+
+.pause-overlay.paused {
+  opacity: 0.7;
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.pause-overlay.paused:hover {
+  opacity: 1;
+}
+
+.pause-overlay .play-arrow { display: none; }
+.pause-overlay .pause-bar { display: block; }
+
+.pause-overlay.paused .play-arrow { display: block; }
+.pause-overlay.paused .pause-bar { display: none; }
+
+/* ------------------------------------------------------------------ */
 /*  Drop zone                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -311,6 +357,12 @@ html, body {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.reset-forces-btn {
+  margin-top: 8px;
+  margin-left: 16px;
+  margin-right: 16px;
 }
 
 .action-toggle {

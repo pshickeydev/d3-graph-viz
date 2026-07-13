@@ -23,6 +23,14 @@
             <div class="loading-text">Computing layout...</div>
           </div>
         </div>
+        <!-- Pause/resume overlay button -->
+        <button id="btn-pause" type="button" class="pause-overlay hidden" aria-label="Pause simulation">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <rect class="pause-bar" x="6" y="4" width="4" height="16" rx="1"/>
+            <rect class="pause-bar" x="14" y="4" width="4" height="16" rx="1"/>
+            <polygon class="play-arrow" points="7,4 20,12 7,20"/>
+          </svg>
+        </button>
         <!-- Drop zone (shown until file is loaded) -->
         <div id="drop-zone" role="button" tabindex="0" aria-label="Upload graph JSON file">
           <div class="drop-icon" aria-hidden="true">📊</div>
@@ -37,7 +45,6 @@
         <div class="sidebar-section sidebar-actions">
           <button id="btn-expand-all" type="button" class="action-btn">Expand All</button>
           <button id="btn-collapse-all" type="button" class="action-btn">Collapse All</button>
-          <button id="btn-pause" type="button" class="action-btn">Pause</button>
           <label class="action-toggle" id="toggle-labels">
             <input type="checkbox" checked>
             <span>Labels</span>

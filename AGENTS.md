@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **Keep in sync**: any changes to this file should also be reflected in `README.md`.
+
 Guidelines for AI agents working on this project.
 
 ## Project Overview
@@ -84,7 +86,7 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 ## UI Controls
 
 - **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and detail panel.
-- **Pause / Resume**: freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. Button text and style toggle between "Pause" and "Resume".
+- **Pause / Resume**: a low-opacity ⏸/▶ icon overlay in the top-right corner of the graph area. Freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. The icon toggles between pause bars and a play arrow; `aria-label` updates accordingly.
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
 - **Search**: implements the ARIA combobox/listbox pattern. 200ms debounce, minimum 2 characters, results capped to 20. Arrow Up/Down navigates results, Enter selects, Escape clears. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node.
 - **Force controls**: five sliders (Repulsion, Link distance, Gravity, Collision pad, Clustering) with a "Reset forces" button. Forces are auto-tuned based on node count; user overrides are stored separately and merged at runtime. Sliders only auto-refresh when no user overrides exist.
