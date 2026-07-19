@@ -35,6 +35,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Multi-parent visual marker** — nodes with parents of 2+ different types (DAG diamonds) get a yellow dashed stroke, making the diamond structure visible at a glance
 - **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
 - **Force simulation controls** — tune Repulsion, Link distance, Gravity, Collision pad, and Clustering via sidebar sliders; reset to auto-tuned defaults
+- **Layout options** — switch between force-directed (default), circle, grid, concentric (degree-ranked), and radial tree layouts via the sidebar dropdown. Discrete layouts compute positions synchronously and fit to view; force controls hide when a discrete layout is active
 - **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-right corner of the graph; freeze the force simulation while still allowing node dragging
 - **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
 
@@ -75,16 +76,23 @@ d3-graph-viz/
 │   └── style.css       # Dark theme, layout, focus styles, sr-only utility
 ├── js/
 │   ├── main.js         # Entry: file load, wiring, selection state, screen reader announcements
-│   ├── graph.js        # D3 force simulation, render, zoom/pan
+│   ├── graph.js        # D3 force simulation, render, zoom/pan, layout switching
 │   ├── data.js         # Parse/validate JSON, adjacency, expand/collapse, attr discovery & mapping, colour scales, multi-parent detection
-│   └── ui.js           # Sidebar, search (combobox pattern), filters, attr selectors, scale selector, tooltips, collapsible sections
+│   ├── layouts.js      # Discrete layout algorithms (circle, grid, concentric, radial tree)
+│   └── ui.js           # Sidebar, search (combobox pattern), filters, attr selectors, layout selector, scale selector, tooltips, collapsible sections
 ├── test/
 │   ├── data.test.mjs   # GraphStore unit tests
+│   ├── layouts.test.mjs # Discrete layout unit tests (no browser required)
+│   ├── layouts.visual.test.mjs # Playwright: layout switching, options, rendering
+│   ├── layouts.edge-cases.test.mjs # Playwright: layout persistence across UI actions, drag in discrete layouts
+│   ├── layouts.a11y.test.mjs # Playwright: accessibility (labels, keyboard, ARIA, screen reader)
+│   ├── layouts.large-fixture.test.mjs # Playwright: all layouts on 9.6k-node fixture
 │   ├── expand_all.test.mjs
 │   ├── expand_all_xl.test.mjs
 │   ├── graph-gen.mjs   # Synthetic graph generator for tests
 │   └── fixtures/
 │       └── sample-large-graph.json  # 9.6K-node test fixture
+├── playwright.config.mjs # Scopes Playwright to browser-only test files
 ├── README.md
 └── AGENTS.md
 ```
@@ -99,10 +107,20 @@ d3-graph-viz/
 ## Running Tests
 
 ```bash
-node --test test/data.test.mjs
+# Unit tests (no browser required)
+npm test
+# or: node --test test/data.test.mjs test/layouts.test.mjs
+
+# Visual / browser tests (requires a running server + Playwright)
+python3 -m http.server 8765
+npx playwright test
 ```
 
-116 tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), and multi-parent type detection — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs. No browser required.
+141 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the four discrete layout algorithms (circle, grid, concentric, radial tree) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
+
+11 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, and all layouts rendering the 9.6k-node fixture without errors.
+
+6 Playwright accessibility tests covering label association, keyboard operability, heading hierarchy, SVG aria-label updates per layout, screen reader announcements on layout change, and force section focusability.
 
 ## License
 
@@ -115,4 +133,4 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 - Path highlighting between two selected nodes
 - Filter by edge attributes
 - Export visible subgraph as PNG/SVG
-- Hierarchical layout options (tree, radial, zoomable treemap)
+- Additional layouts (DAG layered / dagre-style, compound/cluster grouping)

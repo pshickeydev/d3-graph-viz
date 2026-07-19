@@ -581,6 +581,52 @@ export function renderDetail(el, node, edges, store) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Layout selector                                                    */
+/* ------------------------------------------------------------------ */
+
+import { ALL_LAYOUTS, LAYOUT_LABELS } from './layouts.js';
+
+/**
+ * Render a dropdown for choosing the graph layout.
+ * @param {HTMLElement} el
+ * @param {import('./graph.js').GraphRenderer} renderer
+ * @param {function}    onChange — called after layout changes
+ */
+export function renderLayoutSelector(el, renderer, onChange) {
+  el.innerHTML = '';
+
+  const row = document.createElement('div');
+  row.className = 'attr-selector-row';
+
+  const label = document.createElement('label');
+  label.className = 'attr-selector-label';
+  label.textContent = 'Layout';
+  label.htmlFor = 'select-layout';
+
+  const select = document.createElement('select');
+  select.className = 'attr-selector';
+  select.id = 'select-layout';
+  select.setAttribute('aria-label', 'Graph layout');
+
+  for (const key of ALL_LAYOUTS) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = LAYOUT_LABELS[key];
+    select.appendChild(opt);
+  }
+
+  select.value = renderer.getLayout();
+  select.addEventListener('change', () => {
+    renderer.setLayout(select.value);
+    if (onChange) onChange();
+  });
+
+  row.appendChild(label);
+  row.appendChild(select);
+  el.appendChild(row);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Force controls                                                     */
 /* ------------------------------------------------------------------ */
 

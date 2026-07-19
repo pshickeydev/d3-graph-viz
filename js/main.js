@@ -10,6 +10,7 @@ import {
   renderAttrSelectors,
   renderColorLegend,
   renderForceControls,
+  renderLayoutSelector,
   wireSearch,
   wireSidebarCollapse,
   showTooltip,
@@ -34,6 +35,8 @@ const tooltip   = $('#tooltip');
 const attrSel   = $('#attr-selectors');
 const legend    = $('#color-legend');
 const forceCtrl = $('#force-controls');
+const layoutSel = $('#layout-selector');
+const forceSection = $('#force-section');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const btnPause       = $('#btn-pause');
@@ -216,6 +219,25 @@ function loadGraph(json) {
 
   refreshGraph();
   renderForceControls(forceCtrl, renderer);
+  renderLayoutSelector(layoutSel, renderer, () => {
+    // Hide force controls when a discrete layout is active.
+    if (forceSection) {
+      if (renderer.isForceLayout()) {
+        forceSection.classList.remove('hidden');
+      } else {
+        forceSection.classList.add('hidden');
+      }
+    }
+    const label = {
+      force: 'Force-directed',
+      circle: 'Circle',
+      grid: 'Grid',
+      concentric: 'Concentric',
+      radial: 'Radial tree',
+    }[renderer.getLayout()] || renderer.getLayout();
+    announce(`Layout changed to ${label}`);
+    refreshGraph();
+  });
   renderDetail(detail, null, [], store);
 }
 
@@ -224,7 +246,7 @@ function refreshGraph() {
   const visible = store.getVisible();
   renderer.update(visible);
   if (selectedNodeId) highlightNode(selectedNodeId);
-  if (forceCtrl && !renderer.hasForceOverrides()) {
+  if (forceCtrl && renderer.isForceLayout() && !renderer.hasForceOverrides()) {
     renderForceControls(forceCtrl, renderer);
   }
 }

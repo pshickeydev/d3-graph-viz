@@ -21,3 +21,9 @@ node_modules/
 test-data.json
 *.jpeg
 *.png
+test-results/
+server.pid
+
+# Large sample data files (not part of the repo)
+large_graph.json
+xl_graph.json

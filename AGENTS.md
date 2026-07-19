@@ -13,9 +13,10 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 | File | Responsibility |
 |---|---|
 | `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping with selectable scale (linear/log/percentile), multi-parent type detection |
-| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), multi-parent visual marker (yellow dashed stroke), pulls all visual config from `GraphStore` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour scale selector (linear/log/percentile), colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator), detail sidebar, collapsible sidebar sections with ARIA |
-| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic |
+| `js/layouts.js` | Pure discrete layout functions (circle, grid, concentric, radial tree) and the layout registry (`ALL_LAYOUTS`, `LAYOUT_LABELS`). No D3 dependency — unit-testable in Node |
+| `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), multi-parent visual marker (yellow dashed stroke), pulls all visual config from `GraphStore`, switches between force-directed and discrete layouts via `setLayout()` |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour scale selector (linear/log/percentile), layout selector dropdown, colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator), detail sidebar, collapsible sidebar sections with ARIA |
+| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic, hides force controls when a discrete layout is active |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell with semantic landmarks (`<main>`, `<aside>`, `<header>`), ARIA attributes, screen reader live region, loads D3 v7 from CDN, imports `main.js` as ES module |
 
@@ -25,8 +26,8 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 File drop/pick → main.js parses JSON
   → GraphStore.load() indexes nodes, edges, adjacency, discovers attrs
   → GraphStore.getVisible() computes visible subset
-  → GraphRenderer.update() renders force-directed graph
-  → UI callbacks wire click/hover/search/attr-selectors → store mutations → re-render
+  → GraphRenderer.update() renders graph (force-directed or discrete layout)
+  → UI callbacks wire click/hover/search/attr-selectors/layout-selector → store mutations → re-render
 ```
 
 ## Key Patterns
@@ -37,8 +38,9 @@ File drop/pick → main.js parses JSON
 - **Zoom-dependent labels**: labels are created for the top 500 nodes by radius, then shown/hidden based on zoom level. Only nodes whose radius exceeds a threshold at the current zoom scale display labels. Labels are truncated at 24 characters.
 - **Adaptive edge rendering**: edge opacity, stroke width, and arrow markers scale with the number of visible nodes to reduce visual noise in large graphs. When an attr mapping is active, edge weight derives from the target node's attr value.
 - **Selection takes precedence over hover**: clicking a node or selecting via search sets a persistent selection. While a node is selected, hovering other nodes shows the tooltip but does not change the highlight. The selection highlight is also re-applied after any graph refresh (expand/collapse, filter toggle, attr change) so it is never silently lost. Clicking the background clears the selection.
-- **Pre-tick layout**: when more than 100 new nodes appear, the simulation is pre-ticked off-screen in chunked `requestAnimationFrame` batches (up to 1000 ticks or 10 seconds) with collision disabled. A loading overlay ("Computing layout...") is shown during this phase. After pre-tick, `fitToView()` animates a zoom-to-fit transition.
-- **Responsive resize**: a `ResizeObserver` on the graph container recalculates the viewBox, centering forces, and cluster centers when the window resizes.
+- **Pre-tick layout**: when more than 100 new nodes appear, the simulation is pre-ticked off-screen in chunked `requestAnimationFrame` batches (up to 1000 ticks or 10 seconds) with collision disabled. A loading overlay ("Computing layout...") is shown during this phase. After pre-tick, `fitToView()` animates a zoom-to-fit transition. Pre-tick only runs for the force-directed layout.
+- **Discrete layouts**: switching to a non-force layout (circle, grid, concentric, radial tree) computes positions synchronously via pure functions in `layouts.js`, stops the simulation, renders once, and calls `fitToView()`. The force controls section is hidden while a discrete layout is active. Dragging still works — node positions update directly via `_tick()` without restarting the simulation. On window resize, discrete layouts are recomputed because their positions are viewport-relative.
+- **Responsive resize**: a `ResizeObserver` on the graph container recalculates the viewBox, centering forces, and cluster centers when the window resizes. For discrete layouts, positions are recomputed and the view re-fitted.
 - **D3 module as global**: D3 is loaded via `<script>` tag (not imported), so `d3` is a global. Don't add `import d3` statements.
 - **No build step**: all JS uses native ES module `import`/`export`. No bundler, no transpiler.
 - **State lives in `GraphStore`**: the renderer is stateless — call `update()` with new visible data after any store mutation. Colours and sizes are accessed via `store.nodeColor()`, `store.colorForType()`, `store.colorForRel()`, `store.nodeRadius()` etc. Selection state (`selectedNodeId`) lives in `main.js`, not in the store or renderer.
@@ -70,24 +72,44 @@ No install step. No dependencies beyond a browser and D3 CDN.
 ## Testing
 
 ### Data layer (no browser)
-Run GraphStore unit tests with Node's built-in test runner:
+Run unit tests with Node's built-in test runner:
 
 ```bash
-node --test test/data.test.mjs
+npm test
+# or: node --test test/data.test.mjs test/layouts.test.mjs
 ```
 
-116 tests total — 81 covering validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, and childrenIds; 14 covering attribute discovery, colour-by-attr, size-by-attr, node opacity, and edge weight; 8 covering colour overrides (type, rel, categorical, heat ramp) and legend data; 4 covering multi-root support (all zero-indegree types as roots, reveal across hierarchies, mixed parent/parentless types); 5 covering colour scale modes (linear, log, percentile); 4 covering multi-parent type detection. Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
+141 tests total — 116 covering the data layer (validation, loading, type/rel detection, expand/collapse, getVisible, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes, multi-parent type detection) and 25 covering the four discrete layout algorithms (circle, grid, concentric, radial tree: placement correctness, velocity reset, metric ordering, multi-root and DAG handling). Four graph sizes (10/100/1k/10k nodes+edges each) verify correctness and performance.
 
 A 9.6K-node test fixture is available at `test/fixtures/sample-large-graph.json` for visual testing.
 
 ### Visual (browser required)
-Use Playwright MCP to load the page, drop a JSON file, and verify the graph renders.
+Playwright browser tests cover layout switching, rendering, and persistence across UI actions. The `playwright.config.mjs` scopes Playwright to browser-only test files (visual, edge-cases, large-fixture) so the Node unit tests are not picked up.
+
+```bash
+python3 -m http.server 8765
+npx playwright test
+```
+
+11 tests across three files:
+- `layouts.visual.test.mjs` — selector switching, all options present, discrete layouts render nodes & edges
+- `layouts.edge-cases.test.mjs` — layout persists across expand/collapse, type filter toggle, search & select, colour-by attr change; pause/resume with discrete layout; force sim restores after switching back; drag works in discrete layouts
+- `layouts.large-fixture.test.mjs` — all layouts render 9,609 nodes / 13,417 edges with no browser errors
+
+6 accessibility tests in `layouts.a11y.test.mjs`:
+- Label association (`for`/`id`) and `aria-label` on the layout select
+- Keyboard operability (focus, type-to-select)
+- Heading hierarchy (h2, collapsible with `role="button"`, `aria-expanded`, `aria-controls`, `tabindex="0"`)
+- SVG `aria-label` updates to name the active layout
+- Screen reader live region announces layout changes
+- Hidden force section is not focusable; reappears and is focusable when force layout reselected
 
 ## UI Controls
 
 - **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and detail panel.
 - **Pause / Resume**: a low-opacity ⏸/▶ icon overlay in the top-right corner of the graph area. Freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. The icon toggles between pause bars and a play arrow; `aria-label` updates accordingly.
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
+- **Layout selector**: dropdown to switch between force-directed (default) and discrete layouts (circle, grid, concentric, radial tree). Discrete layouts compute positions synchronously, stop the force simulation, and fit to view. The Forces sidebar section is hidden when a discrete layout is active.
 - **Search**: implements the ARIA combobox/listbox pattern. 200ms debounce, minimum 2 characters, results capped to 20. Arrow Up/Down navigates results, Enter selects, Escape clears. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node.
 - **Force controls**: five sliders (Repulsion, Link distance, Gravity, Collision pad, Clustering) with a "Reset forces" button. Forces are auto-tuned based on node count; user overrides are stored separately and merged at runtime. Sliders only auto-refresh when no user overrides exist.
 - **Collapsible sidebar sections**: every `<h2 class="sidebar-heading">` inside a `.sidebar-section` acts as a toggle button (`role="button"`, `tabindex="0"`) with `aria-expanded` and `aria-controls`. Supports click, Enter, and Space.
@@ -111,12 +133,12 @@ Use Playwright MCP to load the page, drop a JSON file, and verify the graph rend
 
 - Semantic HTML landmarks: `<header>` (stats bar), `<main>` (graph), `<aside>` (sidebar)
 - Heading hierarchy: `<h2>` for sidebar section headings, `<h3>` for detail panel node title, `<h4>` for detail sub-sections (Attributes, Connections)
-- All form controls have associated labels: `<label>` with `for`/`id` for selects (including colour scale selector) and sliders, `aria-label` for colour pickers and checkboxes
+- All form controls have associated labels: `<label>` with `for`/`id` for selects (including layout selector and colour scale selector) and sliders, `aria-label` for colour pickers and checkboxes
 - Drop zone is keyboard-accessible: `role="button"`, `tabindex="0"`, responds to Enter and Space
 - Search implements the ARIA combobox pattern: `role="combobox"` with `aria-expanded`, `aria-autocomplete`, `aria-activedescendant`; results use `role="listbox"` / `role="option"` with `aria-selected`
 - Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
-- SVG has `role="img"` and `aria-label`
-- Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load and node selection
+- SVG has `role="img"` and an `aria-label` that names the active layout (e.g. "Circle layout graph visualization"), updated when the layout changes
+- Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load, node selection, and layout changes
 - Detail panel uses `aria-live="polite"` for content updates
 - Loading overlay uses `role="status"` with `aria-live="assertive"`
 - Tooltip has `role="tooltip"` and `aria-live="polite"`

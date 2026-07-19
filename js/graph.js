@@ -1,10 +1,21 @@
 /**
- * graph.js — D3 force-directed graph renderer.
+ * graph.js — D3 graph renderer.
+ *
+ * Supports a force-directed layout (default) and several discrete
+ * static layouts (circle, grid, concentric, radial tree) via the
+ * pure functions in layouts.js.
  *
  * Pulls all visual configuration (colours, sizes, dash patterns)
  * from the GraphStore instance — nothing is hardcoded to a
  * specific graph schema.
  */
+
+import {
+  circleLayout,
+  gridLayout,
+  concentricLayout,
+  radialTreeLayout,
+} from './layouts.js';
 
 /* ------------------------------------------------------------------ */
 /*  GraphRenderer                                                      */
@@ -76,6 +87,10 @@ export class GraphRenderer {
     this._forceOverrides = {};
     this._autoForceParams = {};
     this._paused = false;
+    /** @type {Object[]} last visible edges, used for discrete-layout resize */
+    this._lastEdges = [];
+    /** Active layout key: 'force' | 'circle' | 'grid' | 'concentric' | 'radial' */
+    this._layout = 'force';
 
     this._init();
   }
@@ -93,7 +108,7 @@ export class GraphRenderer {
       .attr('height', '100%')
       .attr('viewBox', `0 0 ${width} ${height}`)
       .attr('role', 'img')
-      .attr('aria-label', 'Interactive force-directed graph visualization');
+      .attr('aria-label', this._ariaLabel());
 
     this.svg.append('defs');
 
@@ -154,6 +169,12 @@ export class GraphRenderer {
       this.simulation.force('y').y(this.height / 2);
       const clusterCenters = this.store.clusterCenters(this.width, this.height);
       this.simulation.force('cluster', forceCluster(clusterCenters, this._clusterStrength));
+      // Discrete layouts are viewport-relative — recompute positions on resize.
+      if (!this.isForceLayout()) {
+        this._applyDiscreteLayout(this.simulation.nodes(), this._lastEdges);
+        this._tick();
+        this.fitToView();
+      }
     });
     ro.observe(this.container);
   }
@@ -197,6 +218,7 @@ export class GraphRenderer {
   update(visible) {
     const { nodes, edges } = visible;
     const store = this.store;
+    this._lastEdges = edges;
 
     this._ensureArrowMarkers();
 
@@ -248,6 +270,12 @@ export class GraphRenderer {
       }
       return n;
     });
+
+    // Discrete layouts compute positions synchronously and skip the
+    // force simulation entirely.
+    if (this._layout !== 'force') {
+      this._applyDiscreteLayout(simNodes, edges);
+    }
 
     // --- Links ---
     this._visibleNodeCount = simNodes.length;
@@ -344,6 +372,16 @@ export class GraphRenderer {
       );
     this._updateLabelVisibility();
 
+    // Discrete layouts are static — render once and fit to view.
+    if (this._layout !== 'force') {
+      this.simulation.stop();
+      this.simulation.nodes(simNodes);
+      this.simulation.force('link').links(linkData);
+      this._tick();
+      this.fitToView();
+      return;
+    }
+
     // Tune forces for current node count and restart
     this._tuneForces(simNodes.length, clusterCenters);
     this.simulation.nodes(simNodes);
@@ -399,6 +437,74 @@ export class GraphRenderer {
         this.simulation.stop();
         this._tick();
       }
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Layout selection                                                 */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Switch the active layout. Pass 'force' for the default force-directed
+   * simulation, or one of the discrete layout keys from layouts.js.
+   * @param {string} key
+   */
+  setLayout(key) {
+    this._layout = key;
+    this.simulation.stop();
+    this.svg.attr('aria-label', this._ariaLabel());
+    if (key === 'force') {
+      if (!this._paused) this.simulation.alpha(0.6).restart();
+    }
+  }
+
+  /** @returns {string} */
+  getLayout() {
+    return this._layout;
+  }
+
+  /** @returns {boolean} */
+  isForceLayout() {
+    return this._layout === 'force';
+  }
+
+  /**
+   * Build an aria-label for the SVG that names the active layout.
+   * @returns {string}
+   */
+  _ariaLabel() {
+    const labels = {
+      force: 'Interactive force-directed graph visualization',
+      circle: 'Circle layout graph visualization',
+      grid: 'Grid layout graph visualization',
+      concentric: 'Concentric layout graph visualization',
+      radial: 'Radial tree layout graph visualization',
+    };
+    return labels[this._layout] || labels.force;
+  }
+
+  /**
+   * Apply the active discrete layout to the visible nodes.
+   * @param {Object[]} simNodes
+   * @param {Object[]} edges
+   */
+  _applyDiscreteLayout(simNodes, edges) {
+    const store = this.store;
+    switch (this._layout) {
+      case 'circle':
+        circleLayout(simNodes, this.width, this.height);
+        break;
+      case 'grid':
+        gridLayout(simNodes, this.width, this.height);
+        break;
+      case 'concentric':
+        concentricLayout(simNodes, edges, this.width, this.height);
+        break;
+      case 'radial':
+        radialTreeLayout(simNodes, store.parentsOf, this.width, this.height);
+        break;
+      default:
+        break;
     }
   }
 
@@ -626,7 +732,7 @@ export class GraphRenderer {
     const sim = this.simulation;
     return d3.drag()
       .on('start', (event, d) => {
-        if (this._paused) {
+        if (this._paused || !this.isForceLayout()) {
           d.fx = d.x;
           d.fy = d.y;
         } else {
@@ -638,14 +744,14 @@ export class GraphRenderer {
       .on('drag', (event, d) => {
         d.fx = event.x;
         d.fy = event.y;
-        if (this._paused) {
+        if (this._paused || !this.isForceLayout()) {
           d.x = event.x;
           d.y = event.y;
           this._tick();
         }
       })
       .on('end', (event, d) => {
-        if (this._paused) {
+        if (this._paused || !this.isForceLayout()) {
           d.x = d.fx;
           d.y = d.fy;
           d.fx = null;
@@ -665,7 +771,12 @@ export class GraphRenderer {
 
   resume() {
     this._paused = false;
-    this.simulation.alpha(0.3).restart();
+    if (this.isForceLayout()) {
+      this.simulation.alpha(0.3).restart();
+    } else {
+      // Discrete layouts are static — just re-render at current positions.
+      this._tick();
+    }
   }
 
   get isPaused() {

@@ -1,0 +1,27 @@
+{
+  "name": "d3-graph-viz",
+  "version": "1.0.0",
+  "description": "Interactive force-directed graph visualization for directed graphs, built with [D3.js](https://d3js.org/) v7. Originally developed for [Trailmark](https://github.com/trailofbits/trailmark) output but works with any JSON graph matching the `{nodes, edges}` schema below.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test test/data.test.mjs test/layouts.test.mjs",
+    "test:visual": "npx playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pshickeydev/d3-graph-viz.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pshickeydev/d3-graph-viz/issues"
+  },
+  "homepage": "https://github.com/pshickeydev/d3-graph-viz#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
