@@ -85,6 +85,71 @@ export function renderTypeFilters(el, store, onChange, onColorChange) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Edge legend                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render an edge legend listing every discovered relationship type with
+ * its colour, dash pattern, and edge count. Colours are editable via
+ * inline colour pickers, mirroring the type filter controls.
+ * @param {HTMLElement} el
+ * @param {import('./data.js').GraphStore} store
+ * @param {function}    onColorChange — called after any rel colour change
+ */
+export function renderEdgeLegend(el, store, onColorChange) {
+  el.innerHTML = '';
+  for (const rel of store.relList) {
+    const color = store.colorForRel(rel);
+    const dash = store.dashForRel(rel);
+    const count = store.countForRel(rel);
+
+    const row = document.createElement('div');
+    row.className = 'edge-legend-item';
+
+    const swatch = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    swatch.setAttribute('class', 'edge-legend-swatch');
+    swatch.setAttribute('aria-hidden', 'true');
+    swatch.setAttribute('viewBox', '0 0 24 6');
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', '0');
+    line.setAttribute('y1', '3');
+    line.setAttribute('x2', '24');
+    line.setAttribute('y2', '3');
+    line.setAttribute('stroke', color);
+    line.setAttribute('stroke-width', '2');
+    if (dash) line.setAttribute('stroke-dasharray', dash);
+    swatch.appendChild(line);
+
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.className = 'edge-legend-color';
+    input.value = color;
+    input.setAttribute('aria-label', `Change colour for ${rel} edges`);
+    input.addEventListener('input', (e) => {
+      e.stopPropagation();
+      store.setRelColor(rel, e.target.value);
+      line.setAttribute('stroke', e.target.value);
+      if (onColorChange) onColorChange();
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+
+    const label = document.createElement('span');
+    label.className = 'edge-legend-label';
+    label.textContent = rel;
+
+    const countSpan = document.createElement('span');
+    countSpan.className = 'edge-legend-count';
+    countSpan.textContent = count.toLocaleString();
+
+    row.appendChild(swatch);
+    row.appendChild(input);
+    row.appendChild(label);
+    row.appendChild(countSpan);
+    el.appendChild(row);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Search                                                             */
 /* ------------------------------------------------------------------ */
 

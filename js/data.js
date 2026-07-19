@@ -145,6 +145,8 @@ export class GraphStore {
 
     /** Auto-assigned dash pattern per edge rel. @type {Map<string, string|null>} */
     this.relDashes = new Map();
+    /** @type {Map<string, number>} cached edge count per rel */
+    this._relCounts = new Map();
     /** @type {Map<string, number>} cached base radius per type */
     this._typeBaseRadius = new Map();
     /** @type {Map<string, number>} cached node count per type */
@@ -373,6 +375,7 @@ export class GraphStore {
 
     this.relColors = new Map();
     this.relDashes = new Map();
+    this._relCounts = relCounts;
     for (let i = 0; i < this.relList.length; i++) {
       this.relColors.set(this.relList[i], REL_PALETTE[i % REL_PALETTE.length]);
       this.relDashes.set(this.relList[i], REL_DASHES[i % REL_DASHES.length]);
@@ -832,6 +835,11 @@ export class GraphStore {
   /** Get count of nodes for a given type. */
   countForType(type) {
     return this._typeCounts.get(type) || 0;
+  }
+
+  /** Get count of edges for a given rel. */
+  countForRel(rel) {
+    return this._relCounts.get(rel) || 0;
   }
 
   /** Get colour for a node type. */

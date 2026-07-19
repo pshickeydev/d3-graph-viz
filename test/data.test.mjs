@@ -170,6 +170,20 @@ describe('rel detection', () => {
     const { store } = createStore(10, 10);
     assert.equal(store.colorForRel('nonexistent'), DEFAULT_COLOR);
   });
+
+  test('countForRel returns edge count for each rel and 0 for unknown', () => {
+    const { store } = createStore(100, 100);
+    let total = 0;
+    for (const rel of store.relList) {
+      const count = store.countForRel(rel);
+      let manual = 0;
+      for (const e of store.raw.edges) if (e.rel === rel) manual++;
+      assert.equal(count, manual);
+      total += count;
+    }
+    assert.equal(total, store.raw.edges.length);
+    assert.equal(store.countForRel('nonexistent'), 0);
+  });
 });
 
 /* ================================================================

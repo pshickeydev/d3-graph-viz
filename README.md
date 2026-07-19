@@ -30,6 +30,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Zoom-dependent labels** — labels appear progressively as you zoom in; only the most prominent nodes are labelled at overview zoom
 - **Search** — find nodes by label or ID with instant results; full keyboard navigation (Arrow keys, Enter, Escape)
 - **Type filters** — toggle node types on/off, with node counts per type
+- **Edge legend** — lists every relationship type with its colour, dash pattern, and edge count; click the colour swatch next to any rel to customise
 - **Detail panel** — click any node to pop out a details modal over the graph showing full attributes, connections, and links; close with the ✕ button, Escape, or a background click
 - **Tooltip** — hover for quick node summary; active mapping attributes shown first in bold; multi-parent nodes flagged
 - **Multi-parent visual marker** — nodes with parents of 2+ different types (DAG diamonds) get a yellow dashed stroke, making the diamond structure visible at a glance
@@ -119,7 +120,7 @@ python3 -m http.server 8765
 npx playwright test
 ```
 
-141 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the four discrete layout algorithms (circle, grid, concentric, radial tree) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
+142 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the four discrete layout algorithms (circle, grid, concentric, radial tree) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
 
 11 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, and all layouts rendering the 9.6k-node fixture without errors.
 

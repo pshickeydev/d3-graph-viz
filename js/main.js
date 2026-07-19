@@ -7,6 +7,7 @@ import { GraphRenderer } from './graph.js';
 import {
   renderStats,
   renderTypeFilters,
+  renderEdgeLegend,
   renderAttrSelectors,
   renderColorLegend,
   renderForceControls,
@@ -28,6 +29,7 @@ const fileInput = $('#file-input');
 const graphEl   = $('#graph-container');
 const statsBar  = $('#stats-bar');
 const filters   = $('#type-filters');
+const edgeLegend = $('#edge-legend');
 const searchIn  = $('#search-input');
 const searchRes = $('#search-results');
 const detail    = $('#detail-panel');
@@ -173,6 +175,7 @@ function loadGraph(json) {
     refreshGraph();
   }
   renderTypeFilters(filters, store, onTypeFilterChange, refreshGraph);
+  renderEdgeLegend(edgeLegend, store, refreshGraph);
 
   function onAttrChange() {
     renderColorLegend(legend, store, refreshGraph);

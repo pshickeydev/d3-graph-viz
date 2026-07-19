@@ -487,6 +487,66 @@ html, body {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Edge legend                                                        */
+/* ------------------------------------------------------------------ */
+
+.edge-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+}
+
+.edge-legend-swatch {
+  width: 24px;
+  height: 6px;
+  flex-shrink: 0;
+}
+
+.edge-legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+}
+
+.edge-legend-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.edge-legend-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.edge-legend-color::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.edge-legend-label {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-legend-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Attribute selectors                                                */
 /* ------------------------------------------------------------------ */
 
