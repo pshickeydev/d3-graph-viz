@@ -96,17 +96,23 @@ npx playwright test
 - `layouts.edge-cases.test.mjs` — layout persists across expand/collapse, type filter toggle, search & select, colour-by attr change; pause/resume with discrete layout; force sim restores after switching back; drag works in discrete layouts
 - `layouts.large-fixture.test.mjs` — all layouts render 9,609 nodes / 13,417 edges with no browser errors
 
-6 accessibility tests in `layouts.a11y.test.mjs`:
+11 accessibility tests in `layouts.a11y.test.mjs`:
 - Label association (`for`/`id`) and `aria-label` on the layout select
 - Keyboard operability (focus, type-to-select)
 - Heading hierarchy (h2, collapsible with `role="button"`, `aria-expanded`, `aria-controls`, `tabindex="0"`)
 - SVG `aria-label` updates to name the active layout
 - Screen reader live region announces layout changes
 - Hidden force section is not focusable; reappears and is focusable when force layout reselected
+- Sidebar toggle collapses/expands the sidebar with correct ARIA state and icon swap
+- Sidebar toggle is keyboard operable (Enter and Space)
+- Sidebar toggle is hidden until a graph is loaded
+- Collapsed sidebar content is not focusable; becomes focusable again when expanded
+- Loading a new graph resets the sidebar to expanded
 
 ## UI Controls
 
 - **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and closes the detail modal.
+- **Sidebar toggle (hamburger)**: a low-opacity icon overlay in the top-left corner of the graph area. Click (or Enter/Space when focused) to collapse or expand the sidebar. The icon shows an X while the sidebar is open (click to hide) and a hamburger while collapsed (click to show); `aria-expanded`, `aria-controls`, and `aria-label` update accordingly. Hidden until a graph is loaded.
 - **Pause / Resume**: a low-opacity ⏸/▶ icon overlay in the top-right corner of the graph area. Freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. The icon toggles between pause bars and a play arrow; `aria-label` updates accordingly.
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
 - **Layout selector**: dropdown to switch between force-directed (default) and discrete layouts (circle, grid, concentric, radial tree). Discrete layouts compute positions synchronously, stop the force simulation, and fit to view. The Forces sidebar section is hidden when a discrete layout is active.
@@ -137,6 +143,7 @@ npx playwright test
 - Drop zone is keyboard-accessible: `role="button"`, `tabindex="0"`, responds to Enter and Space
 - Search implements the ARIA combobox pattern: `role="combobox"` with `aria-expanded`, `aria-autocomplete`, `aria-activedescendant`; results use `role="listbox"` / `role="option"` with `aria-selected`
 - Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
+- Sidebar toggle uses `aria-expanded`, `aria-controls` (pointing at `#sidebar`), and a dynamic `aria-label` ("Hide sidebar"/"Show sidebar"); responds to Enter and Space. The collapsed sidebar uses `visibility: hidden` (delayed to preserve the slide animation) so its contents are removed from the tab order and accessibility tree.
 - SVG has `role="img"` and an `aria-label` that names the active layout (e.g. "Circle layout graph visualization"), updated when the layout changes
 - Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load, node selection, and layout changes
 - Detail modal uses `role="dialog"` with `aria-label`; its content region uses `aria-live="polite"` for updates. Closable via ✕ button, Escape, and background click.

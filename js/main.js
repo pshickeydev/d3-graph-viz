@@ -42,6 +42,8 @@ const forceSection = $('#force-section');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
 const btnPause       = $('#btn-pause');
+const btnSidebarToggle = $('#btn-sidebar-toggle');
+const sidebarEl     = $('#sidebar');
 const toggleLabels   = $('#toggle-labels input');
 const srAnnounce     = $('#sr-announcements');
 
@@ -152,6 +154,12 @@ function loadGraph(json) {
   btnPause.classList.remove('paused');
   btnPause.setAttribute('aria-label', 'Pause simulation');
 
+  btnSidebarToggle.classList.remove('hidden');
+  btnSidebarToggle.classList.remove('collapsed');
+  btnSidebarToggle.setAttribute('aria-label', 'Hide sidebar');
+  btnSidebarToggle.setAttribute('aria-expanded', 'true');
+  sidebarEl.classList.remove('collapsed');
+
   // Stats
   renderStats(statsBar, json.stats, json.generated, store);
 
@@ -195,6 +203,12 @@ function loadGraph(json) {
       btnPause.classList.add('paused');
       btnPause.setAttribute('aria-label', 'Resume simulation');
     }
+  };
+  btnSidebarToggle.onclick = () => {
+    const collapsed = sidebarEl.classList.toggle('collapsed');
+    btnSidebarToggle.classList.toggle('collapsed', collapsed);
+    btnSidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+    btnSidebarToggle.setAttribute('aria-label', collapsed ? 'Show sidebar' : 'Hide sidebar');
   };
   toggleLabels.onchange = () => {
     if (renderer) {

@@ -179,3 +179,142 @@ test('hidden force section is not focusable', async ({ page }) => {
   });
   expect(refocusedInForceSection).toBe(true);
 });
+
+test('sidebar toggle button collapses and expands the sidebar', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const toggle = page.locator('#btn-sidebar-toggle');
+  const sidebar = page.locator('#sidebar');
+
+  // Toggle is visible and wired after graph load
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-controls', 'sidebar');
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide sidebar');
+  await expect(sidebar).not.toHaveClass(/collapsed/);
+
+  // Initial icon (sidebar expanded): X shown, hamburger hidden (click to close)
+  // SVG <line> has a zero-area geometry, so check computed display instead of visibility.
+  const xDisplayOpen = await toggle.locator('.x-line').first().evaluate((el) => getComputedStyle(el).display);
+  const hamDisplayOpen = await toggle.locator('.hamburger-line').first().evaluate((el) => getComputedStyle(el).display);
+  expect(xDisplayOpen).not.toBe('none');
+  expect(hamDisplayOpen).toBe('none');
+
+  // Click to collapse
+  await toggle.click();
+  await expect(sidebar).toHaveClass(/collapsed/);
+  await expect(toggle).toHaveClass(/collapsed/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveAttribute('aria-label', 'Show sidebar');
+
+  // Collapsed icon: hamburger shown, X hidden (click to open)
+  const xDisplayClosed = await toggle.locator('.x-line').first().evaluate((el) => getComputedStyle(el).display);
+  const hamDisplayClosed = await toggle.locator('.hamburger-line').first().evaluate((el) => getComputedStyle(el).display);
+  expect(xDisplayClosed).toBe('none');
+  expect(hamDisplayClosed).not.toBe('none');
+
+  // The sidebar content should no longer take up layout width.
+  // Wait for the 0.2s width transition to finish, then verify the box has collapsed.
+  await page.waitForTimeout(400);
+  const sidebarBox = await sidebar.boundingBox();
+  expect(sidebarBox.width).toBe(0);
+
+  // Click again to expand
+  await toggle.click();
+  await page.waitForTimeout(400);
+  await expect(sidebar).not.toHaveClass(/collapsed/);
+  await expect(toggle).not.toHaveClass(/collapsed/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide sidebar');
+  const expandedBox = await sidebar.boundingBox();
+  expect(expandedBox.width).toBeGreaterThan(0);
+});
+
+test('sidebar toggle is keyboard operable', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const toggle = page.locator('#btn-sidebar-toggle');
+  const sidebar = page.locator('#sidebar');
+
+  // Focus and activate via keyboard (Enter)
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(sidebar).toHaveClass(/collapsed/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // Space toggles back
+  await page.keyboard.press('Space');
+  await expect(sidebar).not.toHaveClass(/collapsed/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('sidebar toggle is hidden before a graph is loaded', async ({ page }) => {
+  await page.goto(BASE_URL);
+  // Drop zone visible, graph not yet loaded
+  await expect(page.locator('#drop-zone')).toBeVisible();
+  await expect(page.locator('#btn-sidebar-toggle')).toHaveClass(/hidden/);
+});
+
+test('collapsed sidebar content is not focusable', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const toggle = page.locator('#btn-sidebar-toggle');
+  const sidebar = page.locator('#sidebar');
+
+  // Collapse the sidebar
+  await toggle.click();
+  await page.waitForTimeout(400);
+
+  // Try to focus the search input inside the collapsed sidebar — should not land there
+  await page.locator('#search-input').focus();
+  const focusedInSidebar = await page.evaluate(() => {
+    const el = document.activeElement;
+    return el ? el.closest('#sidebar') !== null : false;
+  });
+  expect(focusedInSidebar).toBe(false);
+
+  // Expand again — search input is focusable once more
+  await toggle.click();
+  await page.waitForTimeout(400);
+  await page.locator('#search-input').focus();
+  const refocusedInSidebar = await page.evaluate(() => {
+    const el = document.activeElement;
+    return el ? el.closest('#sidebar') !== null : false;
+  });
+  expect(refocusedInSidebar).toBe(true);
+});
+
+test('loading a new graph resets the sidebar to expanded', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const toggle = page.locator('#btn-sidebar-toggle');
+  const sidebar = page.locator('#sidebar');
+
+  // Collapse the sidebar
+  await toggle.click();
+  await expect(sidebar).toHaveClass(/collapsed/);
+  await expect(toggle).toHaveClass(/collapsed/);
+
+  // Load a different graph — the change event fires because the file differs
+  const otherGraph = path.join(__dirname, 'fixtures', 'sample-large-graph.json');
+  await page.locator('#file-input').setInputFiles(otherGraph);
+  await page.waitForTimeout(1500);
+
+  // Sidebar should be expanded again, toggle in the default state
+  await expect(sidebar).not.toHaveClass(/collapsed/);
+  await expect(toggle).not.toHaveClass(/collapsed/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide sidebar');
+});
