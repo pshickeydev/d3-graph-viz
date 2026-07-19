@@ -1,12 +1,17 @@
 import { test, expect } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const GRAPH_FILE = path.join(__dirname, 'fixtures', 'large_graph.json');
 
 test('expand all loads large graph without nodes stuck in top-left', async ({ page }) => {
   page.on('console', (msg) => console.log('console:', msg.text()));
   page.on('pageerror', (err) => console.log('pageerror:', err.message));
 
-  await page.goto('http://localhost:8000');
+  await page.goto('http://localhost:8765');
 
-  await page.setInputFiles('#file-input', 'large_graph.json');
+  await page.setInputFiles('#file-input', GRAPH_FILE);
 
   await page.waitForSelector('#graph-container svg circle', { timeout: 5000 });
 

@@ -523,7 +523,7 @@ export function hideTooltip(tooltipEl) {
  */
 export function renderDetail(el, node, edges, store) {
   if (!node) {
-    el.innerHTML = '<div class="detail-empty">Click a node to see details</div>';
+    el.innerHTML = '';
     return;
   }
 

@@ -37,6 +37,20 @@
           <div class="drop-text">Drop a graph JSON file here</div>
           <div class="drop-hint">or press Enter to browse</div>
         </div>
+
+        <!-- Detail modal (popped out over the graph) -->
+        <div id="detail-modal" class="hidden" role="dialog" aria-label="Node details">
+          <div class="detail-modal-header">
+            <span class="detail-modal-title">Details</span>
+            <button id="detail-close" type="button" class="detail-modal-close" aria-label="Close details">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <line x1="6" y1="6" x2="18" y2="18"/>
+                <line x1="18" y1="6" x2="6" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div id="detail-panel" aria-live="polite"></div>
+        </div>
       </main>
 
       <!-- Sidebar -->
@@ -91,16 +105,6 @@
           <h2 class="sidebar-heading">Forces</h2>
           <div class="sidebar-section-body">
             <div id="force-controls"></div>
-          </div>
-        </div>
-
-        <!-- Detail panel -->
-        <div class="sidebar-section sidebar-section-flex" style="flex:1; border-bottom:none;">
-          <h2 class="sidebar-heading">Details</h2>
-          <div class="sidebar-section-body" style="flex:1; overflow-y:auto;">
-            <div id="detail-panel" aria-live="polite">
-              <div class="detail-empty">Click a node to see details</div>
-            </div>
           </div>
         </div>
       </aside>

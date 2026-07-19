@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GRAPH_FILE = path.join(__dirname, '..', 'large_graph.json');
+const GRAPH_FILE = path.join(__dirname, 'fixtures', 'large_graph.json');
 const BASE_URL = 'http://localhost:8765';
 
 async function sampleScreenPositions(page, count = 5) {

@@ -30,7 +30,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Zoom-dependent labels** — labels appear progressively as you zoom in; only the most prominent nodes are labelled at overview zoom
 - **Search** — find nodes by label or ID with instant results; full keyboard navigation (Arrow keys, Enter, Escape)
 - **Type filters** — toggle node types on/off, with node counts per type
-- **Detail sidebar** — click any node to see full attributes, connections, and links
+- **Detail panel** — click any node to pop out a details modal over the graph showing full attributes, connections, and links; close with the ✕ button, Escape, or a background click
 - **Tooltip** — hover for quick node summary; active mapping attributes shown first in bold; multi-parent nodes flagged
 - **Multi-parent visual marker** — nodes with parents of 2+ different types (DAG diamonds) get a yellow dashed stroke, making the diamond structure visible at a glance
 - **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
@@ -91,7 +91,9 @@ d3-graph-viz/
 │   ├── expand_all_xl.test.mjs
 │   ├── graph-gen.mjs   # Synthetic graph generator for tests
 │   └── fixtures/
-│       └── sample-large-graph.json  # 9.6K-node test fixture
+│       ├── sample-large-graph.json  # 9.6K-node test fixture
+│       ├── large_graph.json          # large graph for expand-all visual checks
+│       └── xl_graph.json             # extra-large graph for expand-all visual checks
 ├── playwright.config.mjs # Scopes Playwright to browser-only test files
 ├── README.md
 └── AGENTS.md

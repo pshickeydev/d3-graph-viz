@@ -31,6 +31,8 @@ const filters   = $('#type-filters');
 const searchIn  = $('#search-input');
 const searchRes = $('#search-results');
 const detail    = $('#detail-panel');
+const detailModal = $('#detail-modal');
+const detailClose = $('#detail-close');
 const tooltip   = $('#tooltip');
 const attrSel   = $('#attr-selectors');
 const legend    = $('#color-legend');
@@ -57,6 +59,27 @@ function announce(message) {
     requestAnimationFrame(() => { srAnnounce.textContent = message; });
   }
 }
+
+function showDetailModal() {
+  detailModal.classList.remove('hidden');
+}
+function hideDetailModal() {
+  detailModal.classList.add('hidden');
+}
+
+// Close detail modal: clears selection + highlight, mirroring background click
+function closeDetail() {
+  selectedNodeId = null;
+  renderer?.highlight(null);
+  renderDetail(detail, null, [], store);
+  hideDetailModal();
+}
+detailClose.addEventListener('click', closeDetail);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !detailModal.classList.contains('hidden') && e.target !== searchIn) {
+    closeDetail();
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /*  File loading                                                       */
@@ -160,6 +183,7 @@ function loadGraph(json) {
     selectedNodeId = null;
     renderer?.highlight(null);
     renderDetail(detail, null, [], store);
+    hideDetailModal();
   };
   btnPause.onclick = () => {
     if (renderer.isPaused) {
@@ -214,6 +238,7 @@ function loadGraph(json) {
       selectedNodeId = null;
       renderer.highlight(null);
       renderDetail(detail, null, [], store);
+      hideDetailModal();
     },
   });
 
@@ -239,6 +264,7 @@ function loadGraph(json) {
     refreshGraph();
   });
   renderDetail(detail, null, [], store);
+  hideDetailModal();
 }
 
 function refreshGraph() {
@@ -260,6 +286,7 @@ function selectNode(nodeId) {
   const node = store.nodeMap.get(nodeId);
   const edges = store.edgesForNode(nodeId);
   renderDetail(detail, node, edges, store);
+  showDetailModal();
   highlightNode(nodeId);
   announce(`Selected ${node?.label || node?.id || nodeId}, ${edges.length} connections`);
 }

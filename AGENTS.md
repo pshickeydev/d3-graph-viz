@@ -15,8 +15,8 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 | `js/data.js` | `GraphStore` class — parses JSON, validates schema, builds adjacency index, auto-detects node types / root types / edge rels, infers depth for reversed-edge types, assigns colours, manages expand/collapse state, computes visible subset, search, `countForType()`, discovers numeric/categorical attrs, provides attr-driven colour/size/opacity mapping with selectable scale (linear/log/percentile), multi-parent type detection |
 | `js/layouts.js` | Pure discrete layout functions (circle, grid, concentric, radial tree) and the layout registry (`ALL_LAYOUTS`, `LAYOUT_LABELS`). No D3 dependency — unit-testable in Node |
 | `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), multi-parent visual marker (yellow dashed stroke), pulls all visual config from `GraphStore`, switches between force-directed and discrete layouts via `setLayout()` |
-| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour scale selector (linear/log/percentile), layout selector dropdown, colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator), detail sidebar, collapsible sidebar sections with ARIA |
-| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic, hides force controls when a discrete layout is active |
+| `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), colour scale selector (linear/log/percentile), layout selector dropdown, colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator), detail modal content, collapsible sidebar sections with ARIA |
+| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic, shows/hides the detail modal over the graph on node selection, hides force controls when a discrete layout is active |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell with semantic landmarks (`<main>`, `<aside>`, `<header>`), ARIA attributes, screen reader live region, loads D3 v7 from CDN, imports `main.js` as ES module |
 
@@ -106,7 +106,7 @@ npx playwright test
 
 ## UI Controls
 
-- **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and detail panel.
+- **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and closes the detail modal.
 - **Pause / Resume**: a low-opacity ⏸/▶ icon overlay in the top-right corner of the graph area. Freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. The icon toggles between pause bars and a play arrow; `aria-label` updates accordingly.
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
 - **Layout selector**: dropdown to switch between force-directed (default) and discrete layouts (circle, grid, concentric, radial tree). Discrete layouts compute positions synchronously, stop the force simulation, and fit to view. The Forces sidebar section is hidden when a discrete layout is active.
@@ -123,7 +123,7 @@ npx playwright test
 - Expanded nodes have a light stroke to distinguish them from collapsed nodes
 - Multi-parent nodes (parents of 2+ different types, i.e. DAG diamonds) have a yellow dashed stroke to make the diamond structure visible
 - Tooltip shows up to 4 attrs with "… and more" overflow. Multi-parent nodes display "Multiple parent types" in the tooltip. When an attr mapping is active, the tooltip dot reflects the mapped colour and active attrs are shown first in bold.
-- Detail panel shows type, ID, multi-parent indicator (when applicable), all attrs (URLs rendered as links), and up to 50 connections with direction arrows and rel names.
+- **Detail modal**: pops out over the top-right of the graph when a node is selected (via click or search). Shows type, ID, multi-parent indicator (when applicable), all attrs (URLs rendered as links), and up to 50 connections with direction arrows and rel names. Closes via the ✕ button, Escape, or a background click; closing clears the selection and highlight. Anchor-positioned inside `#graph-container` (top: 60px, right: 16px) so it clears the pause overlay button and stays out of the sidebar's control stack. The modal body scrolls internally; the connections list no longer has its own scroll container.
 - Stats bar shows generated date, total node/edge counts, and per-type colored dot counts.
 - All user-facing text is plain English, no abbreviations
 - No comments unless explaining *why*, not *what*
@@ -132,17 +132,17 @@ npx playwright test
 ## Accessibility
 
 - Semantic HTML landmarks: `<header>` (stats bar), `<main>` (graph), `<aside>` (sidebar)
-- Heading hierarchy: `<h2>` for sidebar section headings, `<h3>` for detail panel node title, `<h4>` for detail sub-sections (Attributes, Connections)
+- Heading hierarchy: `<h2>` for sidebar section headings, `<h3>` for detail modal node title, `<h4>` for detail sub-sections (Attributes, Connections)
 - All form controls have associated labels: `<label>` with `for`/`id` for selects (including layout selector and colour scale selector) and sliders, `aria-label` for colour pickers and checkboxes
 - Drop zone is keyboard-accessible: `role="button"`, `tabindex="0"`, responds to Enter and Space
 - Search implements the ARIA combobox pattern: `role="combobox"` with `aria-expanded`, `aria-autocomplete`, `aria-activedescendant`; results use `role="listbox"` / `role="option"` with `aria-selected`
 - Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
 - SVG has `role="img"` and an `aria-label` that names the active layout (e.g. "Circle layout graph visualization"), updated when the layout changes
 - Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load, node selection, and layout changes
-- Detail panel uses `aria-live="polite"` for content updates
+- Detail modal uses `role="dialog"` with `aria-label`; its content region uses `aria-live="polite"` for updates. Closable via ✕ button, Escape, and background click.
 - Loading overlay uses `role="status"` with `aria-live="assertive"`
 - Tooltip has `role="tooltip"` and `aria-live="polite"`
 - All buttons have explicit `type="button"`
 - `:focus-visible` outlines for keyboard navigation
-- Multi-parent visual marker (`#facc15` yellow dashed stroke) has a non-colour-redundant cue (dash pattern) and a text equivalent in tooltip and detail panel
+- Multi-parent visual marker (`#facc15` yellow dashed stroke) has a non-colour-redundant cue (dash pattern) and a text equivalent in tooltip and detail modal
 - Accent colour (`#818cf8`) chosen to pass WCAG AA contrast on dark backgrounds

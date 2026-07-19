@@ -23,7 +23,3 @@ test-data.json
 *.png
 test-results/
 server.pid
-
-# Large sample data files (not part of the repo)
-large_graph.json
-xl_graph.json
