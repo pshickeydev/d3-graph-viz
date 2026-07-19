@@ -1059,3 +1059,388 @@ runSizeTests('small', 10, 10);
 runSizeTests('medium', 100, 100);
 runSizeTests('large', 1000, 1000);
 runSizeTests('extra large', 10000, 10000);
+
+/* ================================================================
+ *  Attribute rollups
+ * ================================================================ */
+
+/** Build a small tree with a numeric 'score' attr for rollup tests. */
+function createRollupStore(extraNodes = [], extraEdges = []) {
+  const store = new GraphStore();
+  // tree:
+  //   root (no score)
+  //   ├── a (10)
+  //   │   ├── a1 (5)
+  //   │   └── a2 (3)
+  //   └── b (20)
+  //       └── b1 (40)
+  // Expected sums: root=78, a=18, b=60, a1=5, a2=3, b1=40
+  // Expected maxes: root=40, a=10, b=40, a1=5, a2=3, b1=40
+  const nodes = [
+    { id: 'root', type: 'root', label: 'Root', attrs: {} },
+    { id: 'a', type: 'branch', label: 'A', attrs: { score: 10 } },
+    { id: 'b', type: 'branch', label: 'B', attrs: { score: 20 } },
+    { id: 'a1', type: 'leaf', label: 'A1', attrs: { score: 5 } },
+    { id: 'a2', type: 'leaf', label: 'A2', attrs: { score: 3 } },
+    { id: 'b1', type: 'leaf', label: 'B1', attrs: { score: 40 } },
+    // Filler nodes so 'score' passes the discovery count >= 5 threshold.
+    { id: 'f0', type: 'leaf', label: 'F0', attrs: { score: 0 } },
+    { id: 'f1', type: 'leaf', label: 'F1', attrs: { score: 1 } },
+    { id: 'f2', type: 'leaf', label: 'F2', attrs: { score: 2 } },
+  ];
+  const edges = [
+    { from: 'root', to: 'a', rel: 'contains' },
+    { from: 'root', to: 'b', rel: 'contains' },
+    { from: 'a', to: 'a1', rel: 'contains' },
+    { from: 'a', to: 'a2', rel: 'contains' },
+    { from: 'b', to: 'b1', rel: 'contains' },
+  ];
+  store.load({ nodes: [...nodes, ...extraNodes], edges: [...edges, ...extraEdges] });
+  return store;
+}
+
+describe('rollup — defaults & state', () => {
+  test('rollup is disabled by default', () => {
+    const store = createRollupStore();
+    assert.equal(store.rollupEnabled, false);
+    assert.equal(store.rollupFn, 'sum');
+    assert.equal(store.rollupActive(), false);
+  });
+
+  test('rollupActive is false when no numeric attr is active', () => {
+    const store = createRollupStore();
+    store.setRollupEnabled(true);
+    // rollup enabled but no colour/size attr selected
+    assert.equal(store.rollupActive(), false);
+  });
+
+  test('rollupActive is false when a categorical attr is active', () => {
+    const store = createRollupStore();
+    // 'tier' is categorical in graph-gen, but here we have no tier.
+    // Add a categorical attr to a few nodes to get it discovered.
+    for (const id of ['a', 'b', 'a1', 'a2', 'b1', 'f0', 'f1', 'f2']) {
+      store.nodeMap.get(id).attrs.tier = 'gold';
+    }
+    store.load({
+      nodes: [...store.nodeMap.values()].map((n) => ({ ...n, attrs: { ...n.attrs, tier: 'gold' } })),
+      edges: store.raw.edges,
+    });
+    store.setRollupEnabled(true);
+    store.setColorAttr('tier');
+    assert.equal(store.rollupActive(), false);
+  });
+
+  test('rollupActive is true when rollup enabled and numeric colour attr active', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupActive(), true);
+  });
+
+  test('rollupActive is true when rollup enabled and numeric size attr active', () => {
+    const store = createRollupStore();
+    store.setSizeAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupActive(), true);
+  });
+
+  test('setRollupEnabled toggles the flag', () => {
+    const store = createRollupStore();
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupEnabled, true);
+    store.setRollupEnabled(false);
+    assert.equal(store.rollupEnabled, false);
+  });
+
+  test('setRollupFn switches the aggregation function', () => {
+    const store = createRollupStore();
+    store.setRollupFn('max');
+    assert.equal(store.rollupFn, 'max');
+    store.setRollupFn('sum');
+    assert.equal(store.rollupFn, 'sum');
+  });
+
+  test('setRollupFn ignores unknown functions', () => {
+    const store = createRollupStore();
+    store.setRollupFn('avg');
+    assert.equal(store.rollupFn, 'sum');
+  });
+});
+
+describe('rollup — sum aggregation', () => {
+  test('aggregates self + all descendant values', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 78);
+    assert.equal(store.rollupValue(store.nodeMap.get('a')), 18);
+    assert.equal(store.rollupValue(store.nodeMap.get('b')), 60);
+    assert.equal(store.rollupValue(store.nodeMap.get('a1')), 5);
+    assert.equal(store.rollupValue(store.nodeMap.get('a2')), 3);
+    assert.equal(store.rollupValue(store.nodeMap.get('b1')), 40);
+  });
+
+  test('leaf with no descendants returns its own value', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupValue(store.nodeMap.get('a1')), 5);
+  });
+
+  test('node with no attr value and no descendants returns undefined', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    // root has no score attr; its descendants do, so it should still
+    // have a rollup. A truly empty node would return undefined.
+    const empty = store.nodeMap.get('f0');
+    empty.attrs = { score: 0 };
+    assert.equal(store.rollupValue(empty), 0);
+  });
+
+  test('range reflects rolled-up values, not raw attr range', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    const legend = store.getColorLegend();
+    assert.equal(legend.min, 0);
+    assert.equal(legend.max, 78);
+    assert.equal(legend.rollup, true);
+    assert.equal(legend.rollupFn, 'sum');
+  });
+
+  test('rollupValue returns undefined when rollup is off', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    // rollup disabled
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), undefined);
+  });
+});
+
+describe('rollup — max aggregation', () => {
+  test('aggregates max of self + descendant values', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    store.setRollupFn('max');
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 40);
+    assert.equal(store.rollupValue(store.nodeMap.get('a')), 10);
+    assert.equal(store.rollupValue(store.nodeMap.get('b')), 40);
+    assert.equal(store.rollupValue(store.nodeMap.get('a1')), 5);
+    assert.equal(store.rollupValue(store.nodeMap.get('b1')), 40);
+  });
+
+  test('legend reports max rollup function', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    store.setRollupFn('max');
+    const legend = store.getColorLegend();
+    assert.equal(legend.rollupFn, 'max');
+    assert.equal(legend.max, 40);
+  });
+});
+
+describe('rollup — DAG diamonds count descendants once', () => {
+  test('shared descendant is not double-counted in sum', () => {
+    // root -> a, root -> b, a -> c, b -> c (diamond)
+    // root's unique descendants: {a, b, a1, a2, b1, c}
+    // sum(root) = 10 + 20 + 5 + 3 + 40 + 100 = 178 (c counted once)
+    // Without dedup, c would be counted via both a and b -> 278.
+    const store = createRollupStore(
+      [{ id: 'c', type: 'leaf', label: 'C', attrs: { score: 100 } }],
+      [
+        { from: 'a', to: 'c', rel: 'contains' },
+        { from: 'b', to: 'c', rel: 'contains' },
+      ],
+    );
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 178);
+    // a's unique descendants: {a, a1, a2, c} = 10 + 5 + 3 + 100 = 118
+    assert.equal(store.rollupValue(store.nodeMap.get('a')), 118);
+    // b's unique descendants: {b, b1, c} = 20 + 40 + 100 = 160
+    assert.equal(store.rollupValue(store.nodeMap.get('b')), 160);
+    assert.equal(store.rollupValue(store.nodeMap.get('c')), 100);
+  });
+
+  test('shared descendant is not double-counted in max', () => {
+    const store = createRollupStore(
+      [{ id: 'c', type: 'leaf', label: 'C', attrs: { score: 100 } }],
+      [
+        { from: 'a', to: 'c', rel: 'contains' },
+        { from: 'b', to: 'c', rel: 'contains' },
+      ],
+    );
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    store.setRollupFn('max');
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 100);
+    assert.equal(store.rollupValue(store.nodeMap.get('a')), 100);
+    assert.equal(store.rollupValue(store.nodeMap.get('b')), 100);
+  });
+});
+
+describe('rollup — cycles', () => {
+  test('cycle members include the whole cycle in their descendant set', () => {
+    // x -> y -> z -> x (cycle). Each can reach all three.
+    const store = new GraphStore();
+    const nodes = [
+      { id: 'x', type: 't', label: 'X', attrs: { score: 1 } },
+      { id: 'y', type: 't', label: 'Y', attrs: { score: 2 } },
+      { id: 'z', type: 't', label: 'Z', attrs: { score: 3 } },
+      { id: 'f0', type: 't', label: 'F0', attrs: { score: 0 } },
+      { id: 'f1', type: 't', label: 'F1', attrs: { score: 1 } },
+      { id: 'f2', type: 't', label: 'F2', attrs: { score: 2 } },
+    ];
+    const edges = [
+      { from: 'x', to: 'y', rel: 'r' },
+      { from: 'y', to: 'z', rel: 'r' },
+      { from: 'z', to: 'x', rel: 'r' },
+    ];
+    store.load({ nodes, edges });
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupValue(store.nodeMap.get('x')), 6);
+    assert.equal(store.rollupValue(store.nodeMap.get('y')), 6);
+    assert.equal(store.rollupValue(store.nodeMap.get('z')), 6);
+  });
+});
+
+describe('rollup — colour mapping', () => {
+  test('ancestor without attr gets a colour when rollup is on', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    // Without rollup, root (no score attr) fades out
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 0.15);
+    assert.equal(store.nodeColor(store.nodeMap.get('root')), DEFAULT_COLOR);
+    store.setRollupEnabled(true);
+    // With rollup, root has a rolled-up value and gets a real colour
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 1);
+    assert.notEqual(store.nodeColor(store.nodeMap.get('root')), DEFAULT_COLOR);
+  });
+
+  test('disabling rollup reverts ancestor to faded state', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 1);
+    store.setRollupEnabled(false);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 0.15);
+    assert.equal(store.nodeColor(store.nodeMap.get('root')), DEFAULT_COLOR);
+  });
+
+  test('leaf keeps a real colour and full opacity with rollup on', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    const leafColor = store.nodeColor(store.nodeMap.get('b1'));
+    assert.notEqual(leafColor, DEFAULT_COLOR);
+    store.setRollupEnabled(true);
+    // The leaf's own value is its rollup, so it stays fully opaque
+    // and coloured. The exact colour may shift because the legend
+    // range now spans rolled-up values (0..78 instead of 0..40).
+    assert.notEqual(store.nodeColor(store.nodeMap.get('b1')), DEFAULT_COLOR);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('b1')), 1);
+  });
+
+  test('changing colour attr rebuilds rollup for the new attr', () => {
+    const store = createRollupStore();
+    // Add a second numeric attr so we can switch
+    for (const [id, node] of store.nodeMap) {
+      if (node.attrs.score != null) {
+        node.attrs.weight = node.attrs.score * 2;
+      }
+    }
+    // reload to re-discover attrs
+    store.load({
+      nodes: [...store.nodeMap.values()].map((n) => ({ ...n, attrs: { ...n.attrs } })),
+      edges: store.raw.edges,
+    });
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 78);
+    store.setColorAttr('weight');
+    // weight = 2*score, so rollup sum should be 2*78 = 156
+    assert.equal(store.rollupValue(store.nodeMap.get('root')), 156);
+    assert.equal(store.rollupActive(), true);
+  });
+});
+
+describe('rollup — size mapping', () => {
+  test('ancestor gets a radius when rollup is on', () => {
+    const store = createRollupStore();
+    store.setSizeAttr('score');
+    // Without rollup, root (no score) gets the fallback min radius
+    const beforeR = store.nodeRadius(store.nodeMap.get('root'));
+    assert.equal(beforeR, 3);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 0.15);
+    store.setRollupEnabled(true);
+    // With rollup, root gets a real radius based on rolled-up value
+    const afterR = store.nodeRadius(store.nodeMap.get('root'));
+    assert.ok(afterR > 3, `root radius should grow with rollup, got ${afterR}`);
+    assert.equal(store.nodeOpacity(store.nodeMap.get('root')), 1);
+  });
+
+  test('root has the largest radius because it has the largest rollup', () => {
+    const store = createRollupStore();
+    store.setSizeAttr('score');
+    store.setRollupEnabled(true);
+    const rootR = store.nodeRadius(store.nodeMap.get('root'));
+    const leafR = store.nodeRadius(store.nodeMap.get('a2'));
+    assert.ok(rootR > leafR, 'root (sum=78) should be larger than a2 (sum=3)');
+  });
+});
+
+describe('rollup — edge weight', () => {
+  test('edge weight uses rolled-up target value when active', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    // edge root->a: target is 'a'. Without rollup, a's weight = (10-0)/(78-0)
+    const edge = store.raw.edges.find((e) => e.from === 'root' && e.to === 'a');
+    store.setRollupEnabled(false);
+    const wBefore = store.edgeWeight(edge);
+    store.setRollupEnabled(true);
+    const wAfter = store.edgeWeight(edge);
+    // With rollup, a's rolled-up value is 18 (out of max 78)
+    assert.ok(wAfter > 0 && wAfter <= 1);
+    assert.notEqual(wBefore, wAfter, 'edge weight should change when rollup toggled');
+    assert.ok(Math.abs(wAfter - 18 / 78) < 0.001, `expected ~0.231, got ${wAfter}`);
+  });
+});
+
+describe('rollup — load resets state', () => {
+  test('loading a new graph resets rollup to disabled', () => {
+    const store = createRollupStore();
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    store.setRollupFn('max');
+    assert.equal(store.rollupEnabled, true);
+    assert.equal(store.rollupFn, 'max');
+    // load a fresh graph
+    const fresh = createRollupStore();
+    store.load({
+      nodes: [...fresh.nodeMap.values()].map((n) => ({ ...n, attrs: { ...n.attrs } })),
+      edges: fresh.raw.edges,
+    });
+    assert.equal(store.rollupEnabled, false);
+    assert.equal(store.rollupFn, 'sum');
+    assert.equal(store.rollupActive(), false);
+  });
+});
+
+describe('rollup — performance on large graph', () => {
+  test('rollup computes within reasonable time for 10k nodes', () => {
+    const { store } = createStore(10000, 10000);
+    store.setColorAttr('score');
+    const t0 = performance.now();
+    store.setRollupEnabled(true);
+    const elapsed = performance.now() - t0;
+    assert.ok(elapsed < 3000, `rollup on 10k nodes took ${elapsed.toFixed(1)}ms`);
+    // sanity: most nodes should have a rollup value
+    let withValue = 0;
+    for (const node of store.nodeMap.values()) {
+      if (store.rollupValue(node) != null) withValue++;
+    }
+    assert.ok(withValue > 5000, 'most nodes should have a rollup value');
+  });
+});

@@ -172,6 +172,20 @@ export class GraphStore {
 
     /** Colour scale mode for numeric attrs: 'linear', 'log', or 'percentile'. */
     this._colorScale = 'linear';
+
+    /**
+     * Rollup state. When enabled for the active attr, ancestor nodes
+     * aggregate numeric attr values from all their descendants (and
+     * themselves) so colour-by-attr / size-by-attr work above the leaf
+     * layer. Aggregation is per node-id; the active function is 'sum'
+     * or 'max'.
+     */
+    this._rollupEnabled = false;
+    this._rollupFn = 'sum';
+    /** @type {Map<string, number>} node-id → rolled-up value for the active attr */
+    this._rollupCache = new Map();
+    /** @type {{min: number, max: number}|null} range of the rolled-up values */
+    this._rollupRange = null;
   }
 
   /* ---------------------------------------------------------------- */
@@ -232,6 +246,10 @@ export class GraphStore {
     this._catColorOverrides.clear();
     this._heatRampOverride = null;
     this._colorScale = 'linear';
+    this._rollupEnabled = false;
+    this._rollupFn = 'sum';
+    this._rollupCache.clear();
+    this._rollupRange = null;
 
     const levels = Math.max(this.typeList.length - 1, 1);
     const maxR = 24, minR = 4;
@@ -454,7 +472,9 @@ export class GraphStore {
     this._catColorOverrides.clear();
     this._heatRampOverride = null;
     this._colorScale = 'linear';
+    this._rebuildRollup();
     this._rebuildColorCache();
+    this._rebuildSizeCache();
   }
 
   /**
@@ -463,6 +483,8 @@ export class GraphStore {
    */
   setSizeAttr(attrKey) {
     this._sizeAttr = attrKey;
+    this._rebuildRollup();
+    this._rebuildColorCache();
     this._rebuildSizeCache();
   }
 
@@ -477,6 +499,185 @@ export class GraphStore {
   setColorScale(mode) {
     this._colorScale = mode;
     this._rebuildColorCache();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Attribute rollups                                                */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Enable or disable descendant rollup for the active numeric attr.
+   * When enabled, ancestor nodes aggregate numeric attr values from
+   * all of their descendants (plus their own value when present) so
+   * colour-by-attr and size-by-attr work above the leaf layer.
+   * @param {boolean} enabled
+   */
+  setRollupEnabled(enabled) {
+    this._rollupEnabled = !!enabled;
+    this._rebuildRollup();
+    this._rebuildColorCache();
+    this._rebuildSizeCache();
+  }
+
+  /**
+   * Set the aggregation function used for rollups.
+   * @param {'sum'|'max'} fn
+   */
+  setRollupFn(fn) {
+    if (fn !== 'sum' && fn !== 'max') return;
+    this._rollupFn = fn;
+    if (!this._rollupEnabled) return;
+    this._rebuildRollup();
+    this._rebuildColorCache();
+    this._rebuildSizeCache();
+  }
+
+  get rollupEnabled() { return this._rollupEnabled; }
+  get rollupFn() { return this._rollupFn; }
+
+  /**
+   * Whether rollup is meaningfully active: enabled AND the active
+   * colour or size attr is numeric. UI uses this to decide whether
+   * to show the rollup controls.
+   * @returns {boolean}
+   */
+  rollupActive() {
+    if (!this._rollupEnabled) return false;
+    const attrKey = this._sizeAttr || this._colorAttr;
+    if (!attrKey) return false;
+    const profile = this.attrProfiles.get(attrKey);
+    return !!profile && profile.kind === 'numeric';
+  }
+
+  /**
+   * Get the rolled-up value for a node when rollup is active.
+   * Returns undefined when rollup is off or the node has no
+   * descendants (and itself lacks) the active attr.
+   * @param {GraphNode} node
+   * @returns {number|undefined}
+   */
+  rollupValue(node) {
+    if (!this.rollupActive()) return undefined;
+    return this._rollupCache.get(node.id);
+  }
+
+  /**
+   * Rebuild the rollup cache for the currently active numeric attr.
+   * Computes, for every node, the aggregate ('sum' or 'max') of the
+   * attr value across the node itself and all of its descendants.
+   * Descendants reachable via multiple paths (DAG diamonds) are
+   * counted once. Cycles in the input graph are handled by visiting
+   * each reachable node at most once per traversal.
+   *
+   * We compute each node's descendant set (including itself) via a
+   * BFS and cache the result. For DAG regions we short-circuit: if
+   * all of a node's children already have cached sets, we union
+   * them instead of running a fresh BFS. Total work is bounded at
+   * O(V × (V + E)) — each node's set is computed at most once.
+   */
+  _rebuildRollup() {
+    this._rollupCache.clear();
+    this._rollupRange = null;
+
+    const attrKey = this._sizeAttr || this._colorAttr;
+    if (!attrKey) return;
+    const profile = this.attrProfiles.get(attrKey);
+    if (!profile || profile.kind !== 'numeric') return;
+
+    const fn = this._rollupFn;
+    const childrenOf = this.childrenOf;
+    const selfAttr = (id) => {
+      const node = this.nodeMap.get(id);
+      if (!node || !node.attrs) return null;
+      const raw = node.attrs[attrKey];
+      if (raw == null || raw === '') return null;
+      const num = Number(raw);
+      return isNaN(num) ? null : num;
+    };
+
+    /** @type {Map<string, Set<string>>} cached descendant sets */
+    const cache = new Map();
+
+    const bfsReachability = (start) => {
+      const set = new Set([start]);
+      const queue = [start];
+      let ptr = 0;
+      while (ptr < queue.length) {
+        const cur = queue[ptr++];
+        for (const cid of (childrenOf.get(cur) || [])) {
+          if (!set.has(cid)) {
+            set.add(cid);
+            queue.push(cid);
+          }
+        }
+      }
+      cache.set(start, set);
+      return set;
+    };
+
+    // Fast path: if every child already has a cached set, union them.
+    // This avoids a full BFS when the sub-tree was already computed
+    // for other nodes. Falls back to BFS otherwise (handles cycles).
+    const unionFromChildren = (id) => {
+      const childIds = childrenOf.get(id) || [];
+      if (childIds.length === 0) {
+        const set = new Set([id]);
+        cache.set(id, set);
+        return set;
+      }
+      let allCached = true;
+      for (const cid of childIds) {
+        if (!cache.has(cid)) { allCached = false; break; }
+      }
+      if (!allCached) return null;
+      const set = new Set([id]);
+      for (const cid of childIds) {
+        for (const d of cache.get(cid)) set.add(d);
+      }
+      cache.set(id, set);
+      return set;
+    };
+
+    const descendantSet = (id) => {
+      const cached = cache.get(id);
+      if (cached) return cached;
+      const unioned = unionFromChildren(id);
+      if (unioned) return unioned;
+      return bfsReachability(id);
+    };
+
+    for (const id of this.nodeMap.keys()) {
+      descendantSet(id);
+    }
+
+    let min = Infinity, max = -Infinity;
+    for (const id of this.nodeMap.keys()) {
+      const set = cache.get(id);
+      if (!set) continue;
+      let result = null;
+      let hasValue = false;
+      for (const d of set) {
+        const v = selfAttr(d);
+        if (v == null) continue;
+        if (!hasValue) {
+          result = v;
+          hasValue = true;
+        } else if (fn === 'max') {
+          if (v > result) result = v;
+        } else {
+          result += v;
+        }
+      }
+      if (hasValue) {
+        this._rollupCache.set(id, result);
+        if (result < min) min = result;
+        if (result > max) max = result;
+      }
+    }
+
+    if (min <= max) {
+      this._rollupRange = { min, max };
+    }
   }
 
   /**
@@ -539,13 +740,20 @@ export class GraphStore {
     if (!profile) return null;
 
     if (profile.kind === 'numeric') {
+      const rollupActive = this.rollupActive()
+        && this._colorAttr === (this._sizeAttr || this._colorAttr);
+      const range = rollupActive && this._rollupRange
+        ? this._rollupRange
+        : profile;
       return {
         kind: 'numeric',
         attr: this._colorAttr,
-        min: profile.min,
-        max: profile.max,
+        min: range.min,
+        max: range.max,
         stops: [...this.getHeatRamp()],
         scale: this._colorScale,
+        rollup: rollupActive,
+        rollupFn: this._rollupFn,
       };
     }
     const entries = profile.values.map((v, i) => ({
@@ -569,16 +777,26 @@ export class GraphStore {
 
     if (profile.kind === 'numeric') {
       const ramp = this.getHeatRamp();
-      const { min, max } = profile;
+      const rollupActive = this.rollupActive()
+        && attrKey === (this._sizeAttr || this._colorAttr);
+      const valueFor = rollupActive
+        ? (node) => this._rollupCache.get(node.id)
+        : (node) => {
+            const raw = node.attrs?.[attrKey];
+            if (raw == null || raw === '') return undefined;
+            const num = Number(raw);
+            return isNaN(num) ? undefined : num;
+        };
+      const { min, max } = rollupActive && this._rollupRange
+        ? this._rollupRange
+        : profile;
       const scale = this._colorScale;
 
       if (scale === 'percentile') {
         const sorted = [];
         for (const node of this.nodeMap.values()) {
-          const raw = node.attrs?.[attrKey];
-          if (raw == null || raw === '') continue;
-          const num = Number(raw);
-          if (isNaN(num)) continue;
+          const num = valueFor(node);
+          if (num == null) continue;
           sorted.push({ id: node.id, val: num });
         }
         sorted.sort((a, b) => a.val - b.val);
@@ -596,10 +814,8 @@ export class GraphStore {
         const linRange = max - min || 1;
 
         for (const node of this.nodeMap.values()) {
-          const raw = node.attrs?.[attrKey];
-          if (raw == null || raw === '') continue;
-          const num = Number(raw);
-          if (isNaN(num)) continue;
+          const num = valueFor(node);
+          if (num == null) continue;
           const t = useLog
             ? (Math.log1p(num) - logMin) / logRange
             : (num - min) / linRange;
@@ -632,17 +848,26 @@ export class GraphStore {
     const profile = this.attrProfiles.get(attrKey);
     if (!profile || profile.kind !== 'numeric') return;
 
-    const { min, max } = profile;
+    const rollupActive = this.rollupActive() && attrKey === this._sizeAttr;
+    const valueFor = rollupActive
+      ? (node) => this._rollupCache.get(node.id)
+      : (node) => {
+          const raw = node.attrs?.[attrKey];
+          if (raw == null || raw === '') return undefined;
+          const num = Number(raw);
+          return isNaN(num) ? undefined : num;
+      };
+    const { min, max } = rollupActive && this._rollupRange
+      ? this._rollupRange
+      : profile;
     const range = max - min || 1;
     const minR = 3, maxR = 28;
 
     for (const node of this.nodeMap.values()) {
-      const raw = node.attrs?.[attrKey];
-      if (raw == null || raw === '') continue;
-      const num = Number(raw);
-      if (isNaN(num)) continue;
+      const num = valueFor(node);
+      if (num == null) continue;
       const t = (num - min) / range;
-      this._attrSizeCache.set(node.id, minR + (maxR - minR) * Math.sqrt(t));
+      this._attrSizeCache.set(node.id, minR + (maxR - minR) * Math.sqrt(Math.max(0, t)));
     }
   }
 
@@ -913,11 +1138,22 @@ export class GraphStore {
     if (!profile || profile.kind !== 'numeric') return 0.5;
     const targetNode = this.nodeMap.get(edge.to);
     if (!targetNode) return 0.2;
-    const raw = targetNode.attrs?.[attrKey];
-    if (raw == null || raw === '') return 0.1;
-    const num = Number(raw);
-    if (isNaN(num)) return 0.1;
-    return (num - profile.min) / (profile.max - profile.min || 1);
+    const rollupActive = this.rollupActive()
+      && attrKey === (this._sizeAttr || this._colorAttr);
+    let num;
+    if (rollupActive) {
+      num = this._rollupCache.get(targetNode.id);
+      if (num == null) return 0.1;
+    } else {
+      const raw = targetNode.attrs?.[attrKey];
+      if (raw == null || raw === '') return 0.1;
+      num = Number(raw);
+      if (isNaN(num)) return 0.1;
+    }
+    const range = rollupActive && this._rollupRange
+      ? this._rollupRange
+      : profile;
+    return (num - range.min) / (range.max - range.min || 1);
   }
 
   /**

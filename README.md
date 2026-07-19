@@ -24,6 +24,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Progressive disclosure** — starts with auto-detected root nodes (all types with parentless nodes, supporting multiple disconnected hierarchies); click to expand children, click again to collapse
 - **Color-coded node types** — colours auto-assigned from a 16-colour palette (ordered for perceptual contrast); click the colour swatch next to any type to customise
 - **Attribute-driven visual mapping** — colour and size nodes by any discovered attribute via sidebar dropdowns. Numeric attrs show a gradient legend with editable ramp stops and a selectable scale mode (Linear, Log, or Percentile) for handling skewed distributions; categorical attrs show labelled swatches. All colours are editable via inline colour pickers. Nodes missing the active attr fade out, and edges scale width/opacity by the target node's value.
+- **Attribute rollups** — when colouring or sizing by a numeric attribute, enable "Roll up descendant values" to aggregate descendant values onto ancestor nodes so the mapping works above the leaf layer. Choose Sum (total across the sub-tree) or Max (peak value); the legend range and edge weights update to reflect the rolled-up values, and tooltips / detail modal show the aggregate. DAG diamonds count shared descendants once
 - **Scaled node sizes** — exponential radius decay across the type hierarchy makes roots visibly larger than leaves, or size by any numeric attribute
 - **Edge styling** — colours and dash patterns auto-assigned per relationship type, with directional arrows (arrows hidden for large graphs to reduce clutter)
 - **Adaptive rendering** — edge opacity, stroke width, and label density scale with the number of visible nodes
@@ -120,9 +121,9 @@ python3 -m http.server 8765
 npx playwright test
 ```
 
-157 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the five discrete layout algorithms (circle, grid, concentric, radial tree, AVSDF circular) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
+184 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, attribute rollups (sum/max, DAG diamonds, cycles, colour/size/edge-weight integration), and the five discrete layout algorithms (circle, grid, concentric, radial tree, AVSDF circular) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
 
-11 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, and all layouts rendering the 9.6k-node fixture without errors.
+13 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, rollup controls appearing and changing node colours, and all layouts rendering the 9.6k-node fixture without errors.
 
 6 Playwright accessibility tests covering label association, keyboard operability, heading hierarchy, SVG aria-label updates per layout, screen reader announcements on layout change, and force section focusability.
 
@@ -132,7 +133,6 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 
 ## Future Improvements
 
-- Attribute rollups — aggregate descendant numeric attrs (sum/max) onto ancestor types so colour-by-attr works above the leaf layer
 - Attribute-based node filtering (e.g. show only nodes where a numeric attr exceeds a threshold)
 - Path highlighting between two selected nodes
 - Filter by edge attributes

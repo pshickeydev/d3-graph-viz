@@ -254,3 +254,106 @@ test('drag works in discrete layout', async ({ page }) => {
 
   expect(errors).toEqual([]);
 });
+
+test('rollup controls appear when numeric colour-by attr is selected', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Switch to circle layout to stop the force simulation and avoid
+  // render-during-tick races when changing attribute mappings.
+  await page.locator('#select-layout').selectOption('circle');
+  await page.waitForTimeout(500);
+
+  // Initially, rollup controls should not be present (no attr selected)
+  expect(await page.locator('#rollup-enabled').count()).toBe(0);
+
+  const colourBy = page.locator('#select-colour-by');
+  const opts = await colourBy.locator('option').allTextContents();
+  expect(opts.length).toBeGreaterThan(1);
+
+  // Select the first numeric attr (index 1 = "index (numeric)")
+  await colourBy.selectOption({ index: 1 });
+  await page.waitForTimeout(500);
+
+  // Rollup checkbox should now be visible
+  const rollupCheckbox = page.locator('#rollup-enabled');
+  await expect(rollupCheckbox).toBeVisible();
+  expect(await rollupCheckbox.isChecked()).toBe(false);
+
+  // Aggregate dropdown should NOT be visible yet (rollup not enabled)
+  expect(await page.locator('#select-rollup-fn').count()).toBe(0);
+
+  // Enable rollup
+  await rollupCheckbox.check();
+  await page.waitForTimeout(500);
+  expect(await rollupCheckbox.isChecked()).toBe(true);
+
+  // Aggregate dropdown should now be visible
+  const fnSelect = page.locator('#select-rollup-fn');
+  await expect(fnSelect).toBeVisible();
+  expect(await fnSelect.inputValue()).toBe('sum');
+
+  // Switch to max
+  await fnSelect.selectOption('max');
+  await page.waitForTimeout(500);
+  expect(await fnSelect.inputValue()).toBe('max');
+
+  // Uncheck rollup — aggregate dropdown should disappear
+  await rollupCheckbox.uncheck();
+  await page.waitForTimeout(500);
+  expect(await rollupCheckbox.isChecked()).toBe(false);
+  expect(await page.locator('#select-rollup-fn').count()).toBe(0);
+
+  expect(errors).toEqual([]);
+});
+
+test('rollup changes node colours when enabled', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Switch to radial layout to keep node positions stable while we change attrs
+  await page.locator('#select-layout').selectOption('radial');
+  await page.waitForTimeout(500);
+
+  // Expand all so ancestor nodes are visible
+  await page.locator('#btn-expand-all').click();
+  await page.waitForTimeout(1000);
+
+  // Select colour-by numeric attr
+  await page.locator('#select-colour-by').selectOption({ index: 1 });
+  await page.waitForTimeout(500);
+
+  // Sample some node fill colours before rollup
+  const fillsBefore = await page.evaluate(() => {
+    const circles = document.querySelectorAll('#graph-container > svg circle');
+    return Array.from(circles).slice(0, 20).map((c) => c.getAttribute('fill'));
+  });
+
+  // Enable rollup
+  await page.locator('#rollup-enabled').check();
+  await page.waitForTimeout(500);
+
+  // Sample node fill colours after rollup — at least some should differ
+  const fillsAfter = await page.evaluate(() => {
+    const circles = document.querySelectorAll('#graph-container > svg circle');
+    return Array.from(circles).slice(0, 20).map((c) => c.getAttribute('fill'));
+  });
+
+  let changed = 0;
+  for (let i = 0; i < Math.min(fillsBefore.length, fillsAfter.length); i++) {
+    if (fillsBefore[i] !== fillsAfter[i]) changed++;
+  }
+  expect(changed).toBeGreaterThan(0);
+
+  expect(errors).toEqual([]);
+});

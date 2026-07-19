@@ -179,6 +179,7 @@ function loadGraph(json) {
   renderEdgeLegend(edgeLegend, store, refreshGraph);
 
   function onAttrChange() {
+    renderAttrSelectors(attrSel, store, onAttrChange);
     renderColorLegend(legend, store, refreshGraph);
     refreshGraph();
   }

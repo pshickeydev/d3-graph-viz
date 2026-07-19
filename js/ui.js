@@ -366,6 +366,71 @@ export function renderAttrSelectors(el, store, onChange) {
     row.appendChild(select);
     el.appendChild(row);
   }
+
+  // Rollup controls — only shown when a numeric colour-by or size-by
+  // attr is active. Enabling rollup aggregates descendant values onto
+  // ancestor nodes so the mapping works above the leaf layer.
+  if (store.rollupActive() || _rollupEligible(store)) {
+    const wrap = document.createElement('div');
+    wrap.className = 'rollup-controls';
+
+    const checkRow = document.createElement('label');
+    checkRow.className = 'rollup-toggle';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'rollup-enabled';
+    checkbox.checked = store.rollupEnabled;
+    checkbox.setAttribute('aria-label', 'Roll up descendant attribute values onto ancestors');
+    checkbox.addEventListener('change', () => {
+      store.setRollupEnabled(checkbox.checked);
+      onChange();
+    });
+    const checkLabel = document.createElement('span');
+    checkLabel.textContent = 'Roll up descendant values';
+    checkRow.appendChild(checkbox);
+    checkRow.appendChild(checkLabel);
+    wrap.appendChild(checkRow);
+
+    if (store.rollupEnabled) {
+      const fnRow = document.createElement('div');
+      fnRow.className = 'attr-selector-row rollup-fn-row';
+      const fnLabel = document.createElement('label');
+      fnLabel.className = 'attr-selector-label';
+      fnLabel.textContent = 'Aggregate';
+      fnLabel.htmlFor = 'select-rollup-fn';
+      const fnSelect = document.createElement('select');
+      fnSelect.className = 'attr-selector';
+      fnSelect.id = 'select-rollup-fn';
+      fnSelect.setAttribute('aria-label', 'Rollup aggregation function');
+      for (const fn of ['sum', 'max']) {
+        const opt = document.createElement('option');
+        opt.value = fn;
+        opt.textContent = fn === 'sum' ? 'Sum' : 'Max';
+        fnSelect.appendChild(opt);
+      }
+      fnSelect.value = store.rollupFn;
+      fnSelect.addEventListener('change', () => {
+        store.setRollupFn(fnSelect.value);
+        onChange();
+      });
+      fnRow.appendChild(fnLabel);
+      fnRow.appendChild(fnSelect);
+      wrap.appendChild(fnRow);
+    }
+
+    el.appendChild(wrap);
+  }
+}
+
+/**
+ * Whether the rollup controls should be shown even when rollup is
+ * currently off: a numeric colour-by or size-by attr is active.
+ */
+function _rollupEligible(store) {
+  const attrKey = store.sizeAttr || store.colorAttr;
+  if (!attrKey) return false;
+  const profile = store.attrProfiles.get(attrKey);
+  return !!profile && profile.kind === 'numeric';
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +585,15 @@ export function showTooltip(tooltipEl, node, event, store) {
     html += `<div class="tooltip-detail">Multiple parent types</div>`;
   }
 
+  if (store.rollupActive()) {
+    const rolled = store.rollupValue(node);
+    if (rolled != null) {
+      const attrKey = store.sizeAttr || store.colorAttr;
+      const fnLabel = store.rollupFn === 'max' ? 'Max' : 'Sum';
+      html += `<div class="tooltip-detail"><strong>${escapeHtml(attrKey)} (${fnLabel} of descendants): ${_fmtNum(rolled)}</strong></div>`;
+    }
+  }
+
   if (node.attrs && typeof node.attrs === 'object') {
     const activeKeys = new Set();
     if (store.colorAttr) activeKeys.add(store.colorAttr);
@@ -606,6 +680,15 @@ export function renderDetail(el, node, edges, store) {
 
   if (store.hasMultipleParentTypes(node.id)) {
     html += '<div class="detail-meta"><div><strong>Multiple parent types</strong></div></div>';
+  }
+
+  if (store.rollupActive()) {
+    const rolled = store.rollupValue(node);
+    if (rolled != null) {
+      const attrKey = store.sizeAttr || store.colorAttr;
+      const fnLabel = store.rollupFn === 'max' ? 'Max' : 'Sum';
+      html += `<div class="detail-meta"><div><strong>${escapeHtml(attrKey)} (${fnLabel} of descendants):</strong> ${_fmtNum(rolled)}</div></div>`;
+    }
   }
 
   // Attrs table — render all attrs generically
