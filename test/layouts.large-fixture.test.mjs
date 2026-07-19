@@ -56,7 +56,7 @@ test('layouts work on 9.6k-node fixture', async ({ page }) => {
 
   // Switch through every discrete layout and verify it renders without
   // errors and actually moves nodes.
-  for (const layout of ['circle', 'grid', 'concentric', 'radial']) {
+  for (const layout of ['circle', 'grid', 'concentric', 'radial', 'avsdf']) {
     await page.locator('#select-layout').selectOption(layout);
     // Discrete layouts are synchronous but fitToView animates (~400ms).
     await page.waitForTimeout(800);

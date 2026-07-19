@@ -36,7 +36,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Multi-parent visual marker** — nodes with parents of 2+ different types (DAG diamonds) get a yellow dashed stroke, making the diamond structure visible at a glance
 - **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
 - **Force simulation controls** — tune Repulsion, Link distance, Gravity, Collision pad, and Clustering via sidebar sliders; reset to auto-tuned defaults
-- **Layout options** — switch between force-directed (default), circle, grid, concentric (degree-ranked), and radial tree layouts via the sidebar dropdown. Discrete layouts compute positions synchronously and fit to view; force controls hide when a discrete layout is active
+- **Layout options** — switch between force-directed (default), circle, grid, concentric (degree-ranked), radial tree, and AVSDF circular (He & Sykora crossing-minimising) layouts via the sidebar dropdown. Discrete layouts compute positions synchronously and fit to view; force controls hide when a discrete layout is active
 - **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-right corner of the graph; freeze the force simulation while still allowing node dragging
 - **Collapsible sidebar** — low-opacity hamburger icon overlay in the top-left corner of the graph; click (or Enter/Space) to collapse or expand the sidebar; icon swaps between ✕ and ☰ with synced ARIA state
 - **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
@@ -80,7 +80,7 @@ d3-graph-viz/
 │   ├── main.js         # Entry: file load, wiring, selection state, screen reader announcements
 │   ├── graph.js        # D3 force simulation, render, zoom/pan, layout switching
 │   ├── data.js         # Parse/validate JSON, adjacency, expand/collapse, attr discovery & mapping, colour scales, multi-parent detection
-│   ├── layouts.js      # Discrete layout algorithms (circle, grid, concentric, radial tree)
+│   ├── layouts.js      # Discrete layout algorithms (circle, grid, concentric, radial tree, AVSDF circular)
 │   └── ui.js           # Sidebar, search (combobox pattern), filters, attr selectors, layout selector, scale selector, tooltips, collapsible sections
 ├── test/
 │   ├── data.test.mjs   # GraphStore unit tests
@@ -120,7 +120,7 @@ python3 -m http.server 8765
 npx playwright test
 ```
 
-142 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the four discrete layout algorithms (circle, grid, concentric, radial tree) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
+157 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, and the five discrete layout algorithms (circle, grid, concentric, radial tree, AVSDF circular) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
 
 11 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, and all layouts rendering the 9.6k-node fixture without errors.
 

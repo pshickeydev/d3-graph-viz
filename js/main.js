@@ -4,6 +4,7 @@
 
 import { GraphStore } from './data.js';
 import { GraphRenderer } from './graph.js';
+import { LAYOUT_LABELS } from './layouts.js';
 import {
   renderStats,
   renderTypeFilters,
@@ -270,13 +271,7 @@ function loadGraph(json) {
         forceSection.classList.add('hidden');
       }
     }
-    const label = {
-      force: 'Force-directed',
-      circle: 'Circle',
-      grid: 'Grid',
-      concentric: 'Concentric',
-      radial: 'Radial tree',
-    }[renderer.getLayout()] || renderer.getLayout();
+    const label = LAYOUT_LABELS[renderer.getLayout()] || renderer.getLayout();
     announce(`Layout changed to ${label}`);
     refreshGraph();
   });

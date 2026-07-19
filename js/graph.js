@@ -15,11 +15,8 @@ import {
   gridLayout,
   concentricLayout,
   radialTreeLayout,
+  avsdfLayout,
 } from './layouts.js';
-
-/* ------------------------------------------------------------------ */
-/*  GraphRenderer                                                      */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -48,6 +45,10 @@ function forceCluster(clusterCenters, strength) {
   return force;
 }
 
+/* ------------------------------------------------------------------ */
+/*  GraphRenderer                                                      */
+/* ------------------------------------------------------------------ */
+
 export class GraphRenderer {
   /**
    * @param {HTMLElement}          container
@@ -60,10 +61,10 @@ export class GraphRenderer {
   constructor(container, store, opts = {}) {
     this.container = container;
     this.store = store;
-    this.onNodeClick = opts.onNodeClick || (() => {});
-    this.onNodeHover = opts.onNodeHover || (() => {});
-    this.onNodeHoverOut = opts.onNodeHoverOut || (() => {});
-    this.onBackgroundClick = opts.onBackgroundClick || (() => {});
+    this.onNodeClick = opts.onNodeClick || (() => { });
+    this.onNodeHover = opts.onNodeHover || (() => { });
+    this.onNodeHoverOut = opts.onNodeHoverOut || (() => { });
+    this.onBackgroundClick = opts.onBackgroundClick || (() => { });
 
     this.width = container.clientWidth;
     this.height = container.clientHeight;
@@ -282,11 +283,11 @@ export class GraphRenderer {
     const hasAttrMapping = store.colorAttr || store.sizeAttr;
     const baseEdgeOpacity = simNodes.length > 500 ? 0.12
       : simNodes.length > 200 ? 0.2
-      : simNodes.length > 50 ? 0.35
-      : 0.5;
+        : simNodes.length > 50 ? 0.35
+          : 0.5;
     const baseEdgeWidth = simNodes.length > 500 ? 0.6
       : simNodes.length > 100 ? 0.8
-      : 1.2;
+        : 1.2;
     const showArrows = simNodes.length <= 300;
     this._linkSel = this.g.select('.links')
       .selectAll('line')
@@ -479,6 +480,7 @@ export class GraphRenderer {
       grid: 'Grid layout graph visualization',
       concentric: 'Concentric layout graph visualization',
       radial: 'Radial tree layout graph visualization',
+      avsdf: 'AVSDF circular layout graph visualization',
     };
     return labels[this._layout] || labels.force;
   }
@@ -502,6 +504,9 @@ export class GraphRenderer {
         break;
       case 'radial':
         radialTreeLayout(simNodes, store.parentsOf, this.width, this.height);
+        break;
+      case 'avsdf':
+        avsdfLayout(simNodes, edges, this.width, this.height);
         break;
       default:
         break;
@@ -537,22 +542,22 @@ export class GraphRenderer {
 
     this.simulation
       .force('link')
-        .distance(p.linkDistance)
-        .strength(null);
+      .distance(p.linkDistance)
+      .strength(null);
     this.simulation
       .force('charge')
-        .strength(p.chargeStrength)
-        .distanceMax(chargeMax)
-        .theta(theta);
+      .strength(p.chargeStrength)
+      .distanceMax(chargeMax)
+      .theta(theta);
     this.simulation
       .force('collision')
-        .radius((d) => this.store.nodeRadius(d) + p.collisionPad);
+      .radius((d) => this.store.nodeRadius(d) + p.collisionPad);
     this.simulation
       .force('x')
-        .strength(p.gravity);
+      .strength(p.gravity);
     this.simulation
       .force('y')
-        .strength(p.gravity);
+      .strength(p.gravity);
     this.simulation
       .force('cluster', forceCluster(clusterCenters, p.clusterStrength));
     this.simulation
@@ -617,7 +622,7 @@ export class GraphRenderer {
       const hasAttrMapping = store.colorAttr || store.sizeAttr;
       const baseOpacity = this._visibleNodeCount > 500 ? 0.12
         : this._visibleNodeCount > 200 ? 0.2
-        : this._visibleNodeCount > 50 ? 0.35 : 0.5;
+          : this._visibleNodeCount > 50 ? 0.35 : 0.5;
       this._linkSel && this._linkSel
         .attr('stroke-opacity', (d) => hasAttrMapping
           ? 0.08 + store.edgeWeight(d._raw) * 0.5

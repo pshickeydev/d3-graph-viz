@@ -71,6 +71,7 @@ test('layout selector has all layout options', async ({ page }) => {
   expect(options).toContain('Grid');
   expect(options).toContain('Concentric');
   expect(options).toContain('Radial tree');
+  expect(options).toContain('AVSDF circular');
 });
 
 test('discrete layouts render edges and nodes', async ({ page }) => {
@@ -83,7 +84,7 @@ test('discrete layouts render edges and nodes', async ({ page }) => {
   await page.locator('#btn-expand-all').click();
   await page.waitForTimeout(1500);
 
-  for (const layout of ['circle', 'grid', 'concentric', 'radial']) {
+  for (const layout of ['circle', 'grid', 'concentric', 'radial', 'avsdf']) {
     await page.locator('#select-layout').selectOption(layout);
     await page.waitForTimeout(800);
     const counts = await page.evaluate(() => ({

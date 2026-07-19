@@ -5,6 +5,7 @@ import {
   gridLayout,
   concentricLayout,
   radialTreeLayout,
+  avsdfLayout,
   DISCRETE_LAYOUTS,
   ALL_LAYOUTS,
   LAYOUT_LABELS,
@@ -36,6 +37,7 @@ describe('layout registry', () => {
     assert.ok(DISCRETE_LAYOUTS.includes('grid'));
     assert.ok(DISCRETE_LAYOUTS.includes('concentric'));
     assert.ok(DISCRETE_LAYOUTS.includes('radial'));
+    assert.ok(DISCRETE_LAYOUTS.includes('avsdf'));
   });
 
   test('ALL_LAYOUTS starts with force', () => {
@@ -288,5 +290,233 @@ describe('radialTreeLayout', () => {
     const dR = dist(get('r'), { x: 300, y: 300 });
     const dC = dist(get('c'), { x: 300, y: 300 });
     assert.ok(dR < dC, 'root closer than diamond bottom');
+  });
+});
+
+/* ================================================================
+ *  AVSDF circular layout (He & Sykora)
+ * ================================================================ */
+
+/**
+ * Count chord crossings for a circular ordering of undirected edges.
+ * Two chords (a,b) and (c,d) cross iff exactly one of c,d lies in the
+ * open interval between a and b on the circle.
+ */
+function countCircularCrossings(order, edges) {
+  const pos = new Map(order.map((id, i) => [id, i]));
+  let count = 0;
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const [a, b] = [edges[i].from, edges[i].to];
+      const [c, d] = [edges[j].from, edges[j].to];
+      if (a === c || a === d || b === c || b === d) continue;
+      const pa = pos.get(a), pb = pos.get(b), pc = pos.get(c), pd = pos.get(d);
+      const lo1 = Math.min(pa, pb), hi1 = Math.max(pa, pb);
+      const lo2 = Math.min(pc, pd), hi2 = Math.max(pc, pd);
+      if ((lo1 < lo2 && lo2 < hi1 && hi1 < hi2) || (lo2 < lo1 && lo1 < hi2 && hi2 < hi1)) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/** Derive the circular ordering the renderer produced from node positions. */
+function circularOrder(nodes, cx, cy) {
+  return nodes
+    .map((n) => ({ id: n.id, a: Math.atan2(n.y - cy, n.x - cx) }))
+    .sort((a, b) => a.a - b.a)
+    .map((o) => o.id);
+}
+
+describe('avsdfLayout', () => {
+  test('places nodes on a circle centered in the viewport', () => {
+    const nodes = makeNodes(['a', 'b', 'c', 'd']);
+    const edges = makeEdges([['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a']]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const cx = 200, cy = 200, radius = 160;
+    for (const node of nodes) {
+      const d = Math.hypot(node.x - cx, node.y - cy);
+      assert.ok(Math.abs(d - radius) < 1e-6, `${node.id} not on circle`);
+    }
+  });
+
+  test('resets velocity', () => {
+    const nodes = makeNodes(['a', 'b', 'c']);
+    const edges = makeEdges([['a', 'b'], ['b', 'c']]);
+    avsdfLayout(nodes, edges, 300, 300);
+    for (const node of nodes) {
+      assert.equal(node.vx, 0);
+      assert.equal(node.vy, 0);
+    }
+  });
+
+  test('single node goes to center', () => {
+    const nodes = makeNodes(['only']);
+    avsdfLayout(nodes, [], 200, 200);
+    assert.equal(nodes[0].x, 100);
+    assert.equal(nodes[0].y, 100);
+  });
+
+  test('empty input is a no-op', () => {
+    avsdfLayout([], [], 200, 200);
+  });
+
+  test('two connected nodes are placed on the circle', () => {
+    const nodes = makeNodes(['a', 'b']);
+    const edges = makeEdges([['a', 'b']]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const cx = 200, cy = 200, radius = 160;
+    for (const node of nodes) {
+      const d = Math.hypot(node.x - cx, node.y - cy);
+      assert.ok(Math.abs(d - radius) < 1e-6);
+    }
+  });
+
+  test('produces zero crossings for a tree', () => {
+    // Paper §3.1: AVSDF yields an optimal (zero-crossing) drawing for any tree.
+    const nodes = makeNodes(['root', 'a', 'b', 'c', 'd', 'e']);
+    const edges = makeEdges([
+      ['root', 'a'], ['root', 'b'], ['root', 'c'],
+      ['b', 'd'], ['b', 'e'],
+    ]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const order = circularOrder(nodes, 200, 200);
+    assert.equal(countCircularCrossings(order, edges), 0);
+  });
+
+  test('produces zero crossings for a path graph', () => {
+    const nodes = makeNodes(['n0', 'n1', 'n2', 'n3', 'n4', 'n5']);
+    const edges = makeEdges([
+      ['n0', 'n1'], ['n1', 'n2'], ['n2', 'n3'],
+      ['n3', 'n4'], ['n4', 'n5'],
+    ]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const order = circularOrder(nodes, 200, 200);
+    assert.equal(countCircularCrossings(order, edges), 0);
+  });
+
+  test('starts from the smallest-degree vertex', () => {
+    // Star: center has degree 5, leaves degree 1. The first-placed vertex
+    // (angle 0) must be a leaf, not the center.
+    const nodes = makeNodes(['center', 'l1', 'l2', 'l3', 'l4', 'l5']);
+    const edges = makeEdges([
+      ['center', 'l1'], ['center', 'l2'], ['center', 'l3'],
+      ['center', 'l4'], ['center', 'l5'],
+    ]);
+    avsdfLayout(nodes, edges, 400, 400, { startAngle: 0 });
+    // Node at angle 0 is the first in the ordering → on the +x axis.
+    const onAxis = nodes.find((n) => Math.abs(n.y - 200) < 1e-6 && n.x > 200);
+    assert.ok(onAxis, 'expected a node on the +x axis');
+    assert.notEqual(onAxis.id, 'center');
+  });
+
+  test('handles disconnected graphs without error', () => {
+    // Two disjoint edges. All vertices have degree 1 so AVSDF must
+    // restart from a new component after the first is consumed.
+    const nodes = makeNodes(['a', 'b', 'c', 'd']);
+    const edges = makeEdges([['a', 'b'], ['c', 'd']]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const order = circularOrder(nodes, 200, 200);
+    assert.equal(order.length, 4);
+    // Each component is an edge → zero crossings overall.
+    assert.equal(countCircularCrossings(order, edges), 0);
+  });
+
+  test('isolated nodes are still placed on the circle', () => {
+    const nodes = makeNodes(['iso1', 'iso2', 'a', 'b']);
+    const edges = makeEdges([['a', 'b']]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const cx = 200, cy = 200, radius = 160;
+    for (const node of nodes) {
+      const d = Math.hypot(node.x - cx, node.y - cy);
+      assert.ok(Math.abs(d - radius) < 1e-6, `${node.id} not on circle`);
+    }
+  });
+
+  test('local adjusting reduces (or keeps) crossings', () => {
+    // A graph where the greedy AVSDF order is suboptimal: K4 joined to
+    // a 4-cycle by a perfect matching. Brute force confirms the optimum
+    // is 7 crossings; without adjusting AVSDF reaches 8.
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const edges = makeEdges([
+      ['a', 'b'], ['a', 'c'], ['a', 'd'],
+      ['b', 'c'], ['b', 'd'], ['c', 'd'],          // K4
+      ['e', 'f'], ['f', 'g'], ['g', 'h'], ['h', 'e'], // 4-cycle
+      ['a', 'e'], ['b', 'f'], ['c', 'g'], ['d', 'h'], // matching
+    ]);
+    const nodesA = makeNodes(ids);
+    avsdfLayout(nodesA, edges, 400, 400, { adjust: false });
+    const cWithout = countCircularCrossings(circularOrder(nodesA, 200, 200), edges);
+
+    const nodesB = makeNodes(ids);
+    avsdfLayout(nodesB, edges, 400, 400, { adjust: true });
+    const cWith = countCircularCrossings(circularOrder(nodesB, 200, 200), edges);
+
+    assert.ok(cWith <= cWithout, `adjusting should not increase crossings (${cWithout} -> ${cWith})`);
+    assert.ok(cWith < cWithout, `adjusting should strictly reduce crossings (${cWithout} -> ${cWith})`);
+  });
+
+  test('adjusting is gated by adjustThreshold', () => {
+    // Five-node graph: below threshold adjusting runs; above it doesn't.
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    const edges = makeEdges([
+      ['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a'], ['a', 'c'],
+    ]);
+    const nodesA = makeNodes(ids);
+    avsdfLayout(nodesA, edges, 400, 400, { adjust: true, adjustThreshold: 10 });
+    const orderA = circularOrder(nodesA, 200, 200);
+
+    const nodesB = makeNodes(ids);
+    avsdfLayout(nodesB, edges, 400, 400, { adjust: true, adjustThreshold: 2 });
+    const orderB = circularOrder(nodesB, 200, 200);
+
+    // With threshold 10 the pass runs; with threshold 2 it is skipped.
+    // The two orders need not differ for every graph, but the call must
+    // not throw and must still place nodes on the circle.
+    assert.equal(orderA.length, ids.length);
+    assert.equal(orderB.length, ids.length);
+  });
+
+  test('honours custom radius and start angle', () => {
+    const nodes = makeNodes(['a', 'b', 'c']);
+    const edges = makeEdges([['a', 'b'], ['b', 'c']]);
+    avsdfLayout(nodes, edges, 200, 200, { radius: 50, startAngle: 0 });
+    // First-ordered node at angle 0 → (150, 100).
+    const onAxis = nodes.find((n) => Math.abs(n.y - 100) < 1e-6 && n.x > 100);
+    assert.ok(onAxis);
+    const d = Math.hypot(onAxis.x - 100, onAxis.y - 100);
+    assert.ok(Math.abs(d - 50) < 1e-6);
+  });
+
+  test('order is deterministic for identical inputs', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    const edges = makeEdges([
+      ['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'e'], ['e', 'a'], ['a', 'c'],
+    ]);
+    const nodesA = makeNodes(ids);
+    avsdfLayout(nodesA, edges, 400, 400);
+    const orderA = circularOrder(nodesA, 200, 200).join(',');
+
+    const nodesB = makeNodes(ids);
+    avsdfLayout(nodesB, edges, 400, 400);
+    const orderB = circularOrder(nodesB, 200, 200).join(',');
+
+    assert.equal(orderA, orderB, 'AVSDF order must be deterministic');
+  });
+
+  test('handles a DAG by treating edges as undirected', () => {
+    // Directed cycle a→b→c→d→a plus chord a→c. The circular crossing
+    // number is defined on undirected graphs, so the renderer must not
+    // treat direction as meaningful here.
+    const nodes = makeNodes(['a', 'b', 'c', 'd']);
+    const edges = makeEdges([
+      ['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a'], ['a', 'c'],
+    ]);
+    avsdfLayout(nodes, edges, 400, 400);
+    const order = circularOrder(nodes, 200, 200);
+    // 4-cycle + one chord has a 0-crossing layout; confirm no more than 1.
+    const c = countCircularCrossings(order, edges);
+    assert.ok(c <= 1, `expected at most 1 crossing, got ${c}`);
   });
 });

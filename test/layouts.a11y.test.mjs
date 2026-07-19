@@ -111,6 +111,11 @@ test('SVG aria-label updates with active layout', async ({ page }) => {
   await page.waitForTimeout(300);
   expect(await svg.getAttribute('aria-label')).toBe('Radial tree layout graph visualization');
 
+  // AVSDF
+  await page.locator('#select-layout').selectOption('avsdf');
+  await page.waitForTimeout(300);
+  expect(await svg.getAttribute('aria-label')).toBe('AVSDF circular layout graph visualization');
+
   // Back to force
   await page.locator('#select-layout').selectOption('force');
   await page.waitForTimeout(300);
@@ -142,6 +147,14 @@ test('layout change is announced to screen readers', async ({ page }) => {
   await page.waitForTimeout(200);
   announcement = await sr.textContent();
   expect(announcement).toContain('Radial tree');
+
+  // Switch to AVSDF circular — must announce the friendly label, not the
+  // raw key 'avsdf' (regression guard for the LAYOUT_LABELS lookup).
+  await page.locator('#select-layout').selectOption('avsdf');
+  await page.waitForTimeout(200);
+  announcement = await sr.textContent();
+  expect(announcement).toContain('AVSDF circular');
+  expect(announcement).not.toContain('avsdf');
 });
 
 test('hidden force section is not focusable', async ({ page }) => {
