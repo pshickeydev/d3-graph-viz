@@ -38,8 +38,8 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Highlight** — hover or select a node to dim unrelated nodes and edges; selection takes precedence over hover
 - **Force simulation controls** — tune Repulsion, Link distance, Gravity, Collision pad, and Clustering via sidebar sliders; reset to auto-tuned defaults
 - **Layout options** — switch between force-directed (default), circle, grid, concentric (degree-ranked), radial tree, and AVSDF circular (He & Sykora crossing-minimising) layouts via the sidebar dropdown. Discrete layouts compute positions synchronously and fit to view; force controls hide when a discrete layout is active
-- **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-right corner of the graph; freeze the force simulation while still allowing node dragging
-- **Collapsible sidebar** — low-opacity hamburger icon overlay in the top-left corner of the graph; click (or Enter/Space) to collapse or expand the sidebar; icon swaps between ✕ and ☰ with synced ARIA state
+- **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-left corner of the graph; freeze the force simulation while still allowing node dragging
+- **Collapsible sidebar** — low-opacity hamburger icon overlay in the top-right corner of the graph; click (or Enter/Space) to collapse or expand the sidebar; icon swaps between ✕ and ☰ with synced ARIA state
 - **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
 
 ## Expected Input Format
