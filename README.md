@@ -40,6 +40,7 @@ Interactive force-directed graph visualization for directed graphs, built with [
 - **Layout options** — switch between force-directed (default), circle, grid, concentric (degree-ranked), radial tree, and AVSDF circular (He & Sykora crossing-minimising) layouts via the sidebar dropdown. Discrete layouts compute positions synchronously and fit to view; force controls hide when a discrete layout is active
 - **Pause / Resume** — low-opacity ⏸/▶ icon overlay in the top-left corner of the graph; freeze the force simulation while still allowing node dragging
 - **Collapsible sidebar** — low-opacity hamburger icon overlay in the top-right corner of the graph; click (or Enter/Space) to collapse or expand the sidebar; icon swaps between ✕ and ☰ with synced ARIA state
+- **Help dialog** — low-opacity question-mark icon overlay in the bottom-left corner of the graph; click (or press `?` anywhere) to open a modal with usage instructions, sidebar control guide, keyboard shortcut table, and visual cue legend. Closes via ✕ button, Escape, or backdrop click with full focus trapping and restoration
 - **Keyboard accessible** — all controls reachable via keyboard with visible focus indicators; ARIA landmarks, roles, and live regions for screen reader support
 
 ## Expected Input Format
@@ -123,9 +124,9 @@ npx playwright test
 
 184 unit tests covering validation, indexing, type/rel detection, expand/collapse, visible subset computation, search, reveal, nodeRadius, clusterCenters, edgesForNode, childrenIds, attribute discovery, colour-by-attr, size-by-attr, node opacity, edge weight, colour overrides, legend data, multi-root support, colour scale modes (linear/log/percentile), multi-parent type detection, attribute rollups (sum/max, DAG diamonds, cycles, colour/size/edge-weight integration), and the five discrete layout algorithms (circle, grid, concentric, radial tree, AVSDF circular) — run against small (10), medium (100), large (1000), and extra-large (10000) synthetic graphs.
 
-13 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, rollup controls appearing and changing node colours, and all layouts rendering the 9.6k-node fixture without errors.
+24 Playwright browser tests covering layout switching, all layout options present, discrete layouts rendering nodes & edges, layout persistence across expand/collapse, type filter toggle, search & select, colour-by attr changes, pause/resume with discrete layouts, drag in discrete layouts, rollup controls appearing and changing node colours, and all layouts rendering the 9.6k-node fixture without errors.
 
-6 Playwright accessibility tests covering label association, keyboard operability, heading hierarchy, SVG aria-label updates per layout, screen reader announcements on layout change, and force section focusability.
+17 Playwright accessibility tests covering label association, keyboard operability, heading hierarchy, SVG aria-label updates per layout, screen reader announcements on layout change, force section focusability, sidebar toggle behaviour (collapse/expand, keyboard, hidden-until-loaded, collapsed-not-focusable, reset-on-new-graph), and help dialog (visible before load, focus management, `?` shortcut, focus trapping, backdrop close, accessible heading/table structure).
 
 ## License
 

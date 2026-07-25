@@ -331,3 +331,154 @@ test('loading a new graph resets the sidebar to expanded', async ({ page }) => {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(toggle).toHaveAttribute('aria-label', 'Hide sidebar');
 });
+
+test('help button is visible and labelled before a graph is loaded', async ({ page }) => {
+  await page.goto(BASE_URL);
+  const help = page.locator('#btn-help');
+  await expect(help).toBeVisible();
+  await expect(help).toHaveAttribute('aria-label', 'Open help and keyboard shortcuts');
+});
+
+test('help modal opens and closes with focus management', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const helpBtn = page.locator('#btn-help');
+  const modal = page.locator('#help-modal');
+
+  // Modal is hidden initially
+  await expect(modal).toHaveClass(/hidden/);
+
+  // Click the help button to open
+  await helpBtn.click();
+  await expect(modal).not.toHaveClass(/hidden/);
+
+  // Dialog has correct ARIA
+  await expect(modal).toHaveAttribute('role', 'dialog');
+  await expect(modal).toHaveAttribute('aria-modal', 'true');
+  await expect(modal).toHaveAttribute('aria-label', 'Help and keyboard shortcuts');
+
+  // Focus moved to the close button
+  await expect(page.locator('#help-close')).toBeFocused();
+
+  // Screen reader announced the opening
+  const sr = page.locator('#sr-announcements');
+  await page.waitForTimeout(200);
+  expect(await sr.textContent()).toContain('Help dialog opened');
+
+  // Heading hierarchy: h2 title inside the dialog
+  await expect(page.locator('.help-modal-title')).toHaveText('How to use this graph viewer');
+
+  // Escape closes the modal
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveClass(/hidden/);
+
+  // Focus restored to the help button
+  await expect(helpBtn).toBeFocused();
+
+  // Screen reader announced the closing
+  await page.waitForTimeout(200);
+  expect(await sr.textContent()).toContain('Help dialog closed');
+});
+
+test('help modal is keyboard operable (? shortcut, Enter on button, Escape)', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const modal = page.locator('#help-modal');
+
+  // ? opens the modal
+  await page.keyboard.press('?');
+  await expect(modal).not.toHaveClass(/hidden/);
+
+  // Escape closes
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveClass(/hidden/);
+
+  // ? does not open the modal when typing in an input
+  await page.locator('#search-input').focus();
+  await page.keyboard.press('?');
+  await expect(modal).toHaveClass(/hidden/);
+});
+
+test('help modal traps focus within the dialog', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const modal = page.locator('#help-modal');
+  const closeBtn = page.locator('#help-close');
+  const body = page.locator('.help-modal-body');
+
+  // Open via button click
+  await page.locator('#btn-help').click();
+  await expect(modal).not.toHaveClass(/hidden/);
+  await expect(closeBtn).toBeFocused();
+
+  // Tab forward from the close button — focus moves to the body (tabindex=0)
+  await page.keyboard.press('Tab');
+  await expect(body).toBeFocused();
+
+  // Tab forward from the body — wrap back to close button
+  await page.keyboard.press('Tab');
+  await expect(closeBtn).toBeFocused();
+
+  // Shift+Tab from close button — wrap to body
+  await page.keyboard.press('Shift+Tab');
+  await expect(body).toBeFocused();
+
+  // Close via Escape
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveClass(/hidden/);
+});
+
+test('help modal closes on backdrop click', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const modal = page.locator('#help-modal');
+
+  // Open via the help button
+  await page.locator('#btn-help').click();
+  await expect(modal).not.toHaveClass(/hidden/);
+
+  // Click the backdrop (not the content) to close
+  await page.locator('#help-backdrop').evaluate((el) => el.click());
+  await expect(modal).toHaveClass(/hidden/);
+
+  // Focus restored to the help button
+  await expect(page.locator('#btn-help')).toBeFocused();
+});
+
+test('help modal content has accessible headings and table structure', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  await page.locator('#btn-help').click();
+
+  // h2 title
+  await expect(page.locator('#help-modal h2')).toHaveCount(1);
+
+  // h3 sub-sections
+  await expect(page.locator('#help-modal h3')).toHaveCount(6);
+
+  // Keyboard shortcuts table has header cells
+  await expect(page.locator('.help-shortcut-table th')).toHaveCount(2);
+  const rows = page.locator('.help-shortcut-table tbody tr');
+  await expect(rows).toHaveCount(5);
+
+  // The ? shortcut row exists
+  await expect(page.locator('.help-shortcut-table')).toContainText('Open this help dialog');
+
+  // Close to clean up
+  await page.keyboard.press('Escape');
+});

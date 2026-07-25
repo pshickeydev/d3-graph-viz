@@ -41,6 +41,14 @@
             <polygon class="play-arrow" points="7,4 20,12 7,20"/>
           </svg>
         </button>
+        <!-- Help overlay button (bottom-left) -->
+        <button id="btn-help" type="button" class="help-overlay" aria-label="Open help and keyboard shortcuts">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </button>
         <!-- Drop zone (shown until file is loaded) -->
         <div id="drop-zone" role="button" tabindex="0" aria-label="Upload graph JSON file">
           <div class="drop-icon" aria-hidden="true">📊</div>
@@ -60,6 +68,79 @@
             </button>
           </div>
           <div id="detail-panel" aria-live="polite"></div>
+        </div>
+
+        <!-- Help modal (centered overlay) -->
+        <div id="help-modal" class="hidden" role="dialog" aria-modal="true" aria-label="Help and keyboard shortcuts">
+          <div id="help-backdrop" class="help-backdrop"></div>
+          <div class="help-modal-content" role="document">
+            <div class="help-modal-header">
+              <h2 class="help-modal-title">How to use this graph viewer</h2>
+              <button id="help-close" type="button" class="help-modal-close" aria-label="Close help">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="help-modal-body" tabindex="0">
+              <section>
+                <h3>Getting started</h3>
+                <p>Drop a graph JSON file onto the page (or click the drop zone to browse). The file must contain <code>nodes[]</code> and <code>edges[]</code> arrays. Only root nodes are visible at first.</p>
+              </section>
+              <section>
+                <h3>Navigating the graph</h3>
+                <ul>
+                  <li><strong>Click a node</strong> to expand or collapse its children. Expanded nodes have a lighter outline.</li>
+                  <li><strong>Click the background</strong> to clear the current selection.</li>
+                  <li><strong>Scroll</strong> to zoom in and out. <strong>Click-drag</strong> the background to pan.</li>
+                  <li><strong>Drag a node</strong> to reposition it (works in every layout).</li>
+                </ul>
+              </section>
+              <section>
+                <h3>Toolbar icons</h3>
+                <ul>
+                  <li><strong>Pause/Resume</strong> (top-left): freezes or restarts the force simulation. Nodes can still be dragged while paused.</li>
+                  <li><strong>Sidebar toggle</strong> (top-right): hides or shows the control sidebar.</li>
+                  <li><strong>Help</strong> (bottom-left): opens this dialog.</li>
+                </ul>
+              </section>
+              <section>
+                <h3>Sidebar controls</h3>
+                <ul>
+                  <li><strong>Expand All / Collapse All</strong>: expand or collapse every node. Collapse All also clears the selection.</li>
+                  <li><strong>Labels</strong>: toggle node labels on or off.</li>
+                  <li><strong>Search</strong>: type to search by node label or ID. Use arrow keys to navigate results, Enter to select, Escape to clear.</li>
+                  <li><strong>Node Types</strong>: filter the graph by type. Click a colour swatch to customise the colour.</li>
+                  <li><strong>Edge Types</strong>: view relationship counts. Click a colour swatch to customise edge colours.</li>
+                  <li><strong>Visual Mapping</strong>: colour nodes by a numeric or categorical attribute, and size nodes by a numeric attribute. Enable <em>Roll up descendant values</em> to aggregate across sub-trees so ancestors without the raw attribute still get a colour or size.</li>
+                  <li><strong>Layout</strong>: switch between force-directed and discrete layouts (circle, grid, concentric, radial tree, AVSDF circular). Discrete layouts stop the simulation and fit the view.</li>
+                  <li><strong>Forces</strong>: adjust repulsion, link distance, gravity, collision, and clustering. Hidden while a discrete layout is active.</li>
+                </ul>
+              </section>
+              <section>
+                <h3>Keyboard shortcuts</h3>
+                <table class="help-shortcut-table">
+                  <thead><tr><th>Action</th><th>Key</th></tr></thead>
+                  <tbody>
+                    <tr><td>Open this help dialog</td><td><kbd>?</kbd></td></tr>
+                    <tr><td>Close dialog / clear selection</td><td><kbd>Esc</kbd></td></tr>
+                    <tr><td>Browse for a file</td><td><kbd>Enter</kbd> / <kbd>Space</kbd> (on drop zone)</td></tr>
+                    <tr><td>Navigate search results</td><td><kbd>↑</kbd> / <kbd>↓</kbd></td></tr>
+                    <tr><td>Select search result</td><td><kbd>Enter</kbd></td></tr>
+                  </tbody>
+                </table>
+              </section>
+              <section>
+                <h3>Visual cues</h3>
+                <ul>
+                  <li><strong>Yellow dashed stroke</strong> on a node marks a multi-parent node (part of a DAG diamond).</li>
+                  <li><strong>Expanded nodes</strong> have a light stroke to distinguish them from collapsed nodes.</li>
+                  <li>Node sizes reflect hierarchy depth (roots are largest) and child count. When a size attribute is active, radius derives from the attribute value.</li>
+                </ul>
+              </section>
+            </div>
+          </div>
         </div>
       </main>
 

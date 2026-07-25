@@ -16,7 +16,7 @@ Interactive D3.js force-directed graph visualization for directed graphs. Origin
 | `js/layouts.js` | Pure discrete layout functions (circle, grid, concentric, radial tree, AVSDF circular) and the layout registry (`ALL_LAYOUTS`, `LAYOUT_LABELS`). No D3 dependency — unit-testable in Node |
 | `js/graph.js` | `GraphRenderer` class — D3 force simulation, SVG rendering, zoom/pan, drag, zoom-dependent label visibility, adaptive edge rendering (including attr-weighted edges), multi-parent visual marker (yellow dashed stroke), pulls all visual config from `GraphStore`, switches between force-directed and discrete layouts via `setLayout()` |
 | `js/ui.js` | Pure functions for UI components — stats bar, type filters (with counts and editable colour pickers), edge legend (per-rel colour/dash swatches with counts and editable colour pickers), attr selectors (colour-by / size-by dropdowns), rollup controls (enable checkbox + sum/max aggregator selector), colour scale selector (linear/log/percentile), layout selector dropdown, colour legend (gradient bar or categorical swatches, all editable), search wiring (combobox pattern with keyboard navigation), tooltip (with multi-parent indicator and rollup value), detail modal content (with rollup value), collapsible sidebar sections with ARIA |
-| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic, shows/hides the detail modal over the graph on node selection, hides force controls when a discrete layout is active |
+| `js/main.js` | Entry point — file loading (drag-and-drop + picker), wires store → renderer → UI, owns selection state and highlight logic, shows/hides the detail modal over the graph on node selection, hides force controls when a discrete layout is active, help modal (open via button or `?` shortcut, focus trapping, close on Escape/backdrop) |
 | `css/style.css` | Dark theme, layout, all component styles |
 | `index.html` | App shell with semantic landmarks (`<main>`, `<aside>`, `<header>`), ARIA attributes, screen reader live region, loads D3 v7 from CDN, imports `main.js` as ES module |
 
@@ -98,7 +98,7 @@ npx playwright test
 - `layouts.edge-cases.test.mjs` — layout persists across expand/collapse, type filter toggle, search & select, colour-by attr change; pause/resume with discrete layout; force sim restores after switching back; drag works in discrete layouts; rollup controls appear when numeric colour-by attr selected; rollup changes node colours when enabled
 - `layouts.large-fixture.test.mjs` — all layouts render 9,609 nodes / 13,417 edges with no browser errors
 
-11 accessibility tests in `layouts.a11y.test.mjs`:
+17 accessibility tests in `layouts.a11y.test.mjs`:
 - Label association (`for`/`id`) and `aria-label` on the layout select
 - Keyboard operability (focus, type-to-select)
 - Heading hierarchy (h2, collapsible with `role="button"`, `aria-expanded`, `aria-controls`, `tabindex="0"`)
@@ -110,12 +110,19 @@ npx playwright test
 - Sidebar toggle is hidden until a graph is loaded
 - Collapsed sidebar content is not focusable; becomes focusable again when expanded
 - Loading a new graph resets the sidebar to expanded
+- Help button is visible and labelled before a graph is loaded
+- Help modal opens and closes with focus management (focus to close button, restore on close, SR announcements)
+- Help modal is keyboard operable (`?` shortcut opens, Escape closes, `?` ignored in inputs)
+- Help modal traps focus within the dialog (Tab/Shift+Tab wrap between focusable elements)
+- Help modal closes on backdrop click and restores focus
+- Help modal content has accessible headings (h2 title, 6 h3 sub-sections) and table structure (header cells, 5 shortcut rows)
 
 ## UI Controls
 
 - **Expand All / Collapse All**: expand or collapse all nodes. Collapse All also clears the current selection and closes the detail modal.
 - **Sidebar toggle (hamburger)**: a low-opacity icon overlay in the top-right corner of the graph area. Click (or Enter/Space when focused) to collapse or expand the sidebar. The icon shows an X while the sidebar is open (click to hide) and a hamburger while collapsed (click to show); `aria-expanded`, `aria-controls`, and `aria-label` update accordingly. Hidden until a graph is loaded.
 - **Pause / Resume**: a low-opacity ⏸/▶ icon overlay in the top-left corner of the graph area. Freezes or restarts the force simulation. Nodes can still be dragged while paused — position updates directly via `_tick()` without restarting the simulation. The icon toggles between pause bars and a play arrow; `aria-label` updates accordingly.
+- **Help dialog**: a low-opacity question-mark icon overlay in the bottom-left corner of the graph area. Click (or press `?` anywhere not in an input) to open a modal dialog (`role="dialog"`, `aria-modal="true"`) with usage instructions, sidebar control guide, keyboard shortcut table, and visual cue legend. The dialog traps Tab focus within itself, restores focus to the help button on close, and closes via the ✕ button, Escape, or a backdrop click. Visible before a graph is loaded so first-time users can discover functionality immediately.
 - **Labels toggle**: checkbox that shows/hides node labels. Labels are capped to the top 500 nodes by radius; zoom-dependent visibility hides labels whose node radius falls below a threshold at the current zoom scale.
 - **Layout selector**: dropdown to switch between force-directed (default) and discrete layouts (circle, grid, concentric, radial tree, AVSDF circular). Discrete layouts compute positions synchronously, stop the force simulation, and fit to view. The Forces sidebar section is hidden when a discrete layout is active.
 - **Search**: implements the ARIA combobox/listbox pattern. 200ms debounce, minimum 2 characters, results capped to 20. Arrow Up/Down navigates results, Enter selects, Escape clears. Selecting a result calls `store.reveal()` to expand ancestors, auto-enables the node's type if filtered out, then selects and highlights the node.
@@ -149,8 +156,9 @@ npx playwright test
 - Collapsible sections use `aria-expanded`, `aria-controls`, `role="button"`, and respond to keyboard
 - Sidebar toggle uses `aria-expanded`, `aria-controls` (pointing at `#sidebar`), and a dynamic `aria-label` ("Hide sidebar"/"Show sidebar"); responds to Enter and Space. The collapsed sidebar uses `visibility: hidden` (delayed to preserve the slide animation) so its contents are removed from the tab order and accessibility tree.
 - SVG has `role="img"` and an `aria-label` that names the active layout (e.g. "Circle layout graph visualization"), updated when the layout changes
-- Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load, node selection, and layout changes
+- Screen reader live region (`#sr-announcements`, `aria-live="polite"`) announces graph load, node selection, layout changes, and help dialog open/close
 - Detail modal uses `role="dialog"` with `aria-label`; its content region uses `aria-live="polite"` for updates. Closable via ✕ button, Escape, and background click.
+- Help modal uses `role="dialog"` with `aria-modal="true"` and `aria-label`; content region has `role="document"`. Focus moves to the close button on open, Tab/Shift+Tab is trapped within the dialog, and focus is restored to the previously focused element on close. Closable via ✕ button, Escape, and backdrop click. Openable via the `?` keyboard shortcut (ignored when typing in inputs). Visible before a graph is loaded so new users can discover functionality immediately.
 - Loading overlay uses `role="status"` with `aria-live="assertive"`
 - Tooltip has `role="tooltip"` and `aria-live="polite"`
 - All buttons have explicit `type="button"`

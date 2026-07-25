@@ -49,6 +49,11 @@ const btnSidebarToggle = $('#btn-sidebar-toggle');
 const sidebarEl     = $('#sidebar');
 const toggleLabels   = $('#toggle-labels input');
 const srAnnounce     = $('#sr-announcements');
+const btnHelp        = $('#btn-help');
+const helpModal      = $('#help-modal');
+const helpBackdrop   = $('#help-backdrop');
+const helpClose      = $('#help-close');
+const helpBody       = helpModal.querySelector('.help-modal-body');
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -83,6 +88,62 @@ detailClose.addEventListener('click', closeDetail);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !detailModal.classList.contains('hidden') && e.target !== searchIn) {
     closeDetail();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Help modal                                                         */
+/* ------------------------------------------------------------------ */
+
+let helpPreviouslyFocused = null;
+
+function openHelp() {
+  helpPreviouslyFocused = document.activeElement;
+  helpModal.classList.remove('hidden');
+  helpBody.scrollTop = 0;
+  announce('Help dialog opened');
+  requestAnimationFrame(() => helpClose.focus());
+}
+
+function closeHelp() {
+  helpModal.classList.add('hidden');
+  announce('Help dialog closed');
+  if (helpPreviouslyFocused) {
+    helpPreviouslyFocused.focus();
+    helpPreviouslyFocused = null;
+  } else {
+    btnHelp.focus();
+  }
+}
+
+btnHelp.addEventListener('click', openHelp);
+helpClose.addEventListener('click', closeHelp);
+helpBackdrop.addEventListener('click', closeHelp);
+
+document.addEventListener('keydown', (e) => {
+  if (helpModal.classList.contains('hidden')) {
+    if (e.key === '?' && !e.target.matches('input, textarea, [contenteditable]')) {
+      e.preventDefault();
+      openHelp();
+    }
+  } else {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeHelp();
+    } else {
+      const focusable = helpModal.querySelectorAll('button, [tabindex="0"]');
+      const focusableArr = Array.from(focusable);
+      if (focusableArr.length === 0) return;
+      const first = focusableArr[0];
+      const last = focusableArr[focusableArr.length - 1];
+      if (e.key === 'Tab' && e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (e.key === 'Tab' && !e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   }
 });
 
