@@ -1108,9 +1108,10 @@ export class GraphStore {
   }
 
   /**
-   * Compute node radius. When a size attribute is active, radius is
-   * derived from that attribute value. Otherwise uses type hierarchy
-   * position and child count.
+   * Compute node radius. When a size attribute is active, node area is
+   * proportional to that attribute value, so radius is the square root of
+   * the normalised value. Otherwise uses type hierarchy position and child
+   * count.
    * @param {GraphNode} node
    * @returns {number}
    */
