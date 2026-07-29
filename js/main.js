@@ -61,7 +61,6 @@ const helpBody       = helpModal.querySelector('.help-modal-body');
 
 const store = new GraphStore();
 let renderer = null;
-let selectedNodeId = null;
 
 function announce(message) {
   if (srAnnounce) {
@@ -79,7 +78,7 @@ function hideDetailModal() {
 
 // Close detail modal: clears selection + highlight, mirroring background click
 function closeDetail() {
-  selectedNodeId = null;
+  store.selectedNodeId = null;
   renderer?.highlight(null);
   renderDetail(detail, null, [], store);
   hideDetailModal();
@@ -90,6 +89,46 @@ document.addEventListener('keydown', (e) => {
     closeDetail();
   }
 });
+
+/* ------------------------------------------------------------------ */
+/*  Static button bindings (bound once; renderer guard added)          */
+/* ------------------------------------------------------------------ */
+
+btnExpandAll.onclick = () => {
+  store.expandAll();
+  refreshGraph();
+};
+btnCollapseAll.onclick = () => {
+  store.collapseAll();
+  refreshGraph();
+  store.selectedNodeId = null;
+  renderer?.highlight(null);
+  renderDetail(detail, null, [], store);
+  hideDetailModal();
+};
+btnPause.onclick = () => {
+  if (!renderer) return;
+  if (renderer.isPaused) {
+    renderer.resume();
+    btnPause.classList.remove('paused');
+    btnPause.setAttribute('aria-label', 'Pause simulation');
+  } else {
+    renderer.pause();
+    btnPause.classList.add('paused');
+    btnPause.setAttribute('aria-label', 'Resume simulation');
+  }
+};
+btnSidebarToggle.onclick = () => {
+  const collapsed = sidebarEl.classList.toggle('collapsed');
+  btnSidebarToggle.classList.toggle('collapsed', collapsed);
+  btnSidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  btnSidebarToggle.setAttribute('aria-label', collapsed ? 'Show sidebar' : 'Hide sidebar');
+};
+toggleLabels.onchange = () => {
+  if (!renderer) return;
+  renderer.showLabels = toggleLabels.checked;
+  refreshGraph();
+};
 
 /* ------------------------------------------------------------------ */
 /*  Help modal                                                         */
@@ -122,7 +161,7 @@ helpBackdrop.addEventListener('click', closeHelp);
 
 document.addEventListener('keydown', (e) => {
   if (helpModal.classList.contains('hidden')) {
-    if (e.key === '?' && !e.target.matches('input, textarea, [contenteditable]')) {
+    if (e.key === '?' && !(e.target instanceof Element && e.target.matches('input, textarea, [contenteditable]'))) {
       e.preventDefault();
       openHelp();
     }
@@ -151,14 +190,41 @@ document.addEventListener('keydown', (e) => {
 /*  File loading                                                       */
 /* ------------------------------------------------------------------ */
 
+const dropZoneError = $('#drop-zone-error');
+const dropZoneErrorText = $('#drop-zone-error-text');
+const dropZoneErrorDismiss = $('#drop-zone-error-dismiss');
+
+function showError(message) {
+  dropZoneErrorText.textContent = message;
+  dropZoneError.classList.remove('hidden');
+  // Ensure the drop zone is visible so the banner can be seen.
+  dropZone.classList.remove('hidden');
+  announce(message);
+}
+
+function clearError() {
+  dropZoneErrorText.textContent = '';
+  dropZoneError.classList.add('hidden');
+}
+
+dropZoneErrorDismiss.addEventListener('click', (e) => {
+  e.stopPropagation();
+  clearError();
+  // If a graph is already loaded, hide the drop zone to reveal it.
+  if (store.nodeMap.size > 0) {
+    dropZone.classList.add('hidden');
+  }
+});
+
 function handleFile(file) {
+  clearError();
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const json = JSON.parse(e.target.result);
+      const json = JSON.parse(String(e.target.result));
       loadGraph(json);
     } catch (err) {
-      alert(`Failed to parse JSON: ${err.message}`);
+      showError(`Failed to parse JSON: ${err.message}`);
     }
   };
   reader.readAsText(file);
@@ -199,12 +265,23 @@ dropZone.addEventListener('keydown', (e) => {
 /* ------------------------------------------------------------------ */
 
 function loadGraph(json) {
-  store.load(json);
-
-  if (store.nodeMap.size === 0) {
-    alert('The loaded file contains no nodes.');
+  try {
+    store.load(json);
+  } catch (err) {
+    showError(err.message);
     return;
   }
+
+  if (store.nodeMap.size === 0) {
+    showError('The loaded file contains no nodes.');
+    return;
+  }
+
+  clearError();
+
+  // Reset selection state — the previous selection refers to the old graph
+  store.selectedNodeId = null;
+  hideTooltip(tooltip);
 
   // Hide drop zone, show graph
   dropZone.classList.add('hidden');
@@ -247,42 +324,6 @@ function loadGraph(json) {
   renderAttrSelectors(attrSel, store, onAttrChange);
   renderColorLegend(legend, store, refreshGraph);
 
-  btnExpandAll.onclick = () => {
-    store.expandAll();
-    refreshGraph();
-  };
-  btnCollapseAll.onclick = () => {
-    store.collapseAll();
-    refreshGraph();
-    selectedNodeId = null;
-    renderer?.highlight(null);
-    renderDetail(detail, null, [], store);
-    hideDetailModal();
-  };
-  btnPause.onclick = () => {
-    if (renderer.isPaused) {
-      renderer.resume();
-      btnPause.classList.remove('paused');
-      btnPause.setAttribute('aria-label', 'Pause simulation');
-    } else {
-      renderer.pause();
-      btnPause.classList.add('paused');
-      btnPause.setAttribute('aria-label', 'Resume simulation');
-    }
-  };
-  btnSidebarToggle.onclick = () => {
-    const collapsed = sidebarEl.classList.toggle('collapsed');
-    btnSidebarToggle.classList.toggle('collapsed', collapsed);
-    btnSidebarToggle.setAttribute('aria-expanded', String(!collapsed));
-    btnSidebarToggle.setAttribute('aria-label', collapsed ? 'Show sidebar' : 'Hide sidebar');
-  };
-  toggleLabels.onchange = () => {
-    if (renderer) {
-      renderer.showLabels = toggleLabels.checked;
-      refreshGraph();
-    }
-  };
-
   // Search — reveal and enable the target node's type if filtered out
   wireSearch(searchIn, searchRes, store, (nodeId) => {
     const node = store.nodeMap.get(nodeId);
@@ -295,32 +336,33 @@ function loadGraph(json) {
     selectNode(nodeId);
   });
 
-  // Create renderer
-  if (renderer) {
-    graphEl.querySelector('svg')?.remove();
+  // Create renderer once; reuse across subsequent file loads
+  if (!renderer) {
+    renderer = new GraphRenderer(graphEl, store, {
+      onNodeClick: (node) => {
+        store.toggleExpand(node.id);
+        refreshGraph();
+        selectNode(node.id);
+      },
+      onNodeHover: (node, event) => {
+        showTooltip(tooltip, node, event, store);
+        if (!store.selectedNodeId) highlightNode(node.id);
+      },
+      onNodeHoverOut: () => {
+        hideTooltip(tooltip);
+        if (store.selectedNodeId) highlightNode(store.selectedNodeId);
+        else renderer.highlight(null);
+      },
+      onBackgroundClick: () => {
+        store.selectedNodeId = null;
+        renderer.highlight(null);
+        renderDetail(detail, null, [], store);
+        hideDetailModal();
+      },
+    });
+  } else {
+    renderer.reset();
   }
-  renderer = new GraphRenderer(graphEl, store, {
-    onNodeClick: (node) => {
-      store.toggleExpand(node.id);
-      refreshGraph();
-      selectNode(node.id);
-    },
-    onNodeHover: (node, event) => {
-      showTooltip(tooltip, node, event, store);
-      if (!selectedNodeId) highlightNode(node.id);
-    },
-    onNodeHoverOut: () => {
-      hideTooltip(tooltip);
-      if (selectedNodeId) highlightNode(selectedNodeId);
-      else renderer.highlight(null);
-    },
-    onBackgroundClick: () => {
-      selectedNodeId = null;
-      renderer.highlight(null);
-      renderDetail(detail, null, [], store);
-      hideDetailModal();
-    },
-  });
 
   refreshGraph();
   renderForceControls(forceCtrl, renderer);
@@ -337,6 +379,10 @@ function loadGraph(json) {
     announce(`Layout changed to ${label}`);
     refreshGraph();
   });
+  // Reset force section visibility — renderer.reset() restored force layout
+  if (forceSection && renderer.isForceLayout()) {
+    forceSection.classList.remove('hidden');
+  }
   renderDetail(detail, null, [], store);
   hideDetailModal();
 }
@@ -345,7 +391,7 @@ function refreshGraph() {
   if (!renderer) return;
   const visible = store.getVisible();
   renderer.update(visible);
-  if (selectedNodeId) highlightNode(selectedNodeId);
+  if (store.selectedNodeId) highlightNode(store.selectedNodeId);
   if (forceCtrl && renderer.isForceLayout() && !renderer.hasForceOverrides()) {
     renderForceControls(forceCtrl, renderer);
   }
@@ -356,7 +402,7 @@ function refreshGraph() {
 /* ------------------------------------------------------------------ */
 
 function selectNode(nodeId) {
-  selectedNodeId = nodeId;
+  store.selectedNodeId = nodeId;
   const node = store.nodeMap.get(nodeId);
   const edges = store.edgesForNode(nodeId);
   renderDetail(detail, node, edges, store);

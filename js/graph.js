@@ -10,12 +10,16 @@
  * specific graph schema.
  */
 
+/** @type {any} */
+const d3 = typeof window !== 'undefined' ? /** @type {any} */ (window).d3 : undefined;
+
 import {
   circleLayout,
   gridLayout,
   concentricLayout,
   radialTreeLayout,
   avsdfLayout,
+  LAYOUT_LABELS,
 } from './layouts.js';
 
 /* ------------------------------------------------------------------ */
@@ -53,10 +57,11 @@ export class GraphRenderer {
   /**
    * @param {HTMLElement}          container
    * @param {import('./data.js').GraphStore} store
-   * @param {Object}               opts
-   * @param {function}             opts.onNodeClick
-   * @param {function}             opts.onNodeHover
-   * @param {function}             opts.onNodeHoverOut
+   * @param {Object}               [opts]
+   * @param {function}             [opts.onNodeClick]
+   * @param {function}             [opts.onNodeHover]
+   * @param {function}             [opts.onNodeHoverOut]
+   * @param {function}             [opts.onBackgroundClick]
    */
   constructor(container, store, opts = {}) {
     this.container = container;
@@ -69,11 +74,11 @@ export class GraphRenderer {
     this.width = container.clientWidth;
     this.height = container.clientHeight;
 
-    /** @type {d3.Selection} */
+    /** @type {any} */
     this.svg = null;
-    /** @type {d3.Selection} */
+    /** @type {any} */
     this.g = null;
-    /** @type {d3.Simulation} */
+    /** @type {any} */
     this.simulation = null;
 
     this._linkSel = null;
@@ -85,11 +90,15 @@ export class GraphRenderer {
     this._clusterStrength = 0;
     this._zoomScale = 1;
     this._visibleNodeCount = 0;
+    /** @type {{chargeStrength?: number, linkDistance?: number, gravity?: number, collisionPad?: number, clusterStrength?: number}} */
     this._forceOverrides = {};
-    this._autoForceParams = {};
+    /** @type {{chargeStrength: number, linkDistance: number, gravity: number, collisionPad: number, clusterStrength: number}} */
+    this._autoForceParams = { chargeStrength: 0, linkDistance: 0, gravity: 0, collisionPad: 0, clusterStrength: 0 };
     this._paused = false;
     /** @type {Object[]} last visible edges, used for discrete-layout resize */
     this._lastEdges = [];
+    /** @type {Map<string, number>} precomputed edge weights, rebuilt each update */
+    this._edgeWeights = new Map();
     /** Active layout key: 'force' | 'circle' | 'grid' | 'concentric' | 'radial' */
     this._layout = 'force';
 
@@ -181,6 +190,58 @@ export class GraphRenderer {
   }
 
   /* ---------------------------------------------------------------- */
+  /*  Reset (called when a new graph is loaded into the same renderer) */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Clear all rendered state so the renderer can be reused for a new
+   * graph. Keeps the SVG element, zoom behaviour, drag handler, and
+   * ResizeObserver alive — only the per-graph artefacts (selections,
+   * markers, simulation nodes, layout state) are discarded.
+   */
+  reset() {
+    // Cancel any in-flight pre-tick work
+    this._preTickId++;
+
+    // Restore collision force in case reset() happened mid-pre-tick
+    if (!this.simulation.force('collision')) {
+      this.simulation.force('collision', d3.forceCollide());
+    }
+    const overlay = this.container.querySelector('#loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+
+    this.simulation.stop();
+    this.simulation.nodes([]);
+    this.simulation.force('link').links([]);
+
+    // Clear rendered DOM
+    this.g.select('.links').selectAll('*').remove();
+    this.g.select('.nodes').selectAll('*').remove();
+    this.g.select('.labels').selectAll('*').remove();
+    this.svg.select('defs').selectAll('*').remove();
+
+    // Drop selection handles so highlight/tick become no-ops until next update()
+    this._linkSel = null;
+    this._nodeSel = null;
+    this._labelSel = null;
+
+    // Reset per-graph state
+    this._highlightedId = null;
+    this._zoomScale = 1;
+    this._visibleNodeCount = 0;
+    this._forceOverrides = {};
+    this._autoForceParams = { chargeStrength: 0, linkDistance: 0, gravity: 0, collisionPad: 0, clusterStrength: 0 };
+    this._paused = false;
+    this._lastEdges = [];
+    this._edgeWeights = new Map();
+    this._layout = 'force';
+    this.svg.attr('aria-label', this._ariaLabel());
+
+    // Reset zoom so the new graph starts un-transformed
+    this.svg.call(this._zoom.transform, d3.zoomIdentity);
+  }
+
+  /* ---------------------------------------------------------------- */
   /*  Arrow markers (rebuilt when edge rels change)                     */
   /* ---------------------------------------------------------------- */
 
@@ -250,7 +311,7 @@ export class GraphRenderer {
         n.vx = old.vx;
         n.vy = old.vy;
       } else {
-        const parents = store.parentsOf.get(n.id) || [];
+        const parents = store.parentIds(n.id);
         const parentPos = parents.length > 0 ? oldPositions.get(parents[0]) : null;
         if (parentPos) {
           const jitter = Math.min(40 + nodes.length * 0.05, 120);
@@ -281,6 +342,18 @@ export class GraphRenderer {
     // --- Links ---
     this._visibleNodeCount = simNodes.length;
     const hasAttrMapping = store.colorAttr || store.sizeAttr;
+
+    // Precompute edge weights so each edge hits the store once, not
+    // four times (width + opacity in both enter and update accessors).
+    const edgeWeights = new Map();
+    if (hasAttrMapping) {
+      for (const d of linkData) {
+        const key = `${d.source?.id || d.source}-${d.target?.id || d.target}`;
+        edgeWeights.set(key, store.edgeWeight(d._raw));
+      }
+    }
+    this._edgeWeights = edgeWeights;
+
     const baseEdgeOpacity = simNodes.length > 500 ? 0.12
       : simNodes.length > 200 ? 0.2
         : simNodes.length > 50 ? 0.35
@@ -289,28 +362,29 @@ export class GraphRenderer {
       : simNodes.length > 100 ? 0.8
         : 1.2;
     const showArrows = simNodes.length <= 300;
+    const edgeKey = (d) => `${d.source?.id || d.source}-${d.target?.id || d.target}`;
     this._linkSel = this.g.select('.links')
       .selectAll('line')
-      .data(linkData, (d) => `${d.source?.id || d.source}-${d.target?.id || d.target}`)
+      .data(linkData, edgeKey)
       .join(
         (enter) => enter.append('line')
           .attr('stroke', (d) => store.colorForRel(d.rel))
           .attr('stroke-width', (d) => hasAttrMapping
-            ? baseEdgeWidth + store.edgeWeight(d._raw) * 2
+            ? baseEdgeWidth + edgeWeights.get(edgeKey(d)) * 2
             : baseEdgeWidth)
           .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
           .attr('stroke-opacity', (d) => hasAttrMapping
-            ? 0.08 + store.edgeWeight(d._raw) * 0.5
+            ? 0.08 + edgeWeights.get(edgeKey(d)) * 0.5
             : baseEdgeOpacity)
           .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (update) => update
           .attr('stroke', (d) => store.colorForRel(d.rel))
           .attr('stroke-dasharray', (d) => store.dashForRel(d.rel))
           .attr('stroke-opacity', (d) => hasAttrMapping
-            ? 0.08 + store.edgeWeight(d._raw) * 0.5
+            ? 0.08 + edgeWeights.get(edgeKey(d)) * 0.5
             : baseEdgeOpacity)
           .attr('stroke-width', (d) => hasAttrMapping
-            ? baseEdgeWidth + store.edgeWeight(d._raw) * 2
+            ? baseEdgeWidth + edgeWeights.get(edgeKey(d)) * 2
             : baseEdgeWidth)
           .attr('marker-end', (d) => showArrows ? `url(#arrow-${CSS.escape(d.rel)})` : null),
         (exit) => exit.remove(),
@@ -353,6 +427,11 @@ export class GraphRenderer {
       labelData = simNodes.slice().sort(
         (a, b) => store.nodeRadius(b) - store.nodeRadius(a),
       ).slice(0, MAX_LABELS);
+      // Cache radius on each label datum so _updateLabelVisibility()
+      // doesn't recompute it (Map.get + sqrt) on every zoom event.
+      for (const d of labelData) {
+        d._labelRadius = store.nodeRadius(d);
+      }
     }
     this._labelSel = this.g.select('.labels')
       .selectAll('text')
@@ -360,15 +439,15 @@ export class GraphRenderer {
       .join(
         (enter) => enter.append('text')
           .text((d) => _truncateLabel(d.label || d.id, 24))
-          .attr('font-size', (d) => Math.max(9, store.nodeRadius(d) * 0.7))
+          .attr('font-size', (d) => Math.max(9, d._labelRadius * 0.7))
           .attr('text-anchor', 'middle')
-          .attr('dy', (d) => store.nodeRadius(d) + 14)
+          .attr('dy', (d) => d._labelRadius + 14)
           .attr('fill', '#e2e8f0')
           .attr('pointer-events', 'none'),
         (update) => update
           .text((d) => _truncateLabel(d.label || d.id, 24))
-          .attr('font-size', (d) => Math.max(9, store.nodeRadius(d) * 0.7))
-          .attr('dy', (d) => store.nodeRadius(d) + 14),
+          .attr('font-size', (d) => Math.max(9, d._labelRadius * 0.7))
+          .attr('dy', (d) => d._labelRadius + 14),
         (exit) => exit.remove(),
       );
     this._updateLabelVisibility();
@@ -421,8 +500,8 @@ export class GraphRenderer {
           this._tick();
           if (overlay) overlay.classList.add('hidden');
           if (typeof window !== 'undefined') {
-            window.__preTickMs = performance.now() - t0;
-            window.__preTickTicks = done;
+            /** @type {any} */ (window).__preTickMs = performance.now() - t0;
+            /** @type {any} */ (window).__preTickTicks = done;
           }
           this.fitToView();
           if (!this._paused) {
@@ -474,15 +553,8 @@ export class GraphRenderer {
    * @returns {string}
    */
   _ariaLabel() {
-    const labels = {
-      force: 'Interactive force-directed graph visualization',
-      circle: 'Circle layout graph visualization',
-      grid: 'Grid layout graph visualization',
-      concentric: 'Concentric layout graph visualization',
-      radial: 'Radial tree layout graph visualization',
-      avsdf: 'AVSDF circular layout graph visualization',
-    };
-    return labels[this._layout] || labels.force;
+    const label = LAYOUT_LABELS[this._layout] || LAYOUT_LABELS.force;
+    return `${label} layout graph visualization`;
   }
 
   /**
@@ -503,7 +575,7 @@ export class GraphRenderer {
         concentricLayout(simNodes, edges, this.width, this.height);
         break;
       case 'radial':
-        radialTreeLayout(simNodes, store.parentsOf, this.width, this.height);
+        radialTreeLayout(simNodes, (id) => store.parentIds(id), this.width, this.height);
         break;
       case 'avsdf':
         avsdfLayout(simNodes, edges, this.width, this.height);
@@ -625,7 +697,7 @@ export class GraphRenderer {
           : this._visibleNodeCount > 50 ? 0.35 : 0.5;
       this._linkSel && this._linkSel
         .attr('stroke-opacity', (d) => hasAttrMapping
-          ? 0.08 + store.edgeWeight(d._raw) * 0.5
+          ? 0.08 + (this._edgeWeights.get(`${d.source?.id || d.source}-${d.target?.id || d.target}`) ?? 0) * 0.5
           : baseOpacity);
       this._labelSel && this._labelSel.attr('opacity', 1);
       this._updateLabelVisibility();
@@ -655,14 +727,13 @@ export class GraphRenderer {
     if (!this._labelSel || !this.showLabels) return;
     const scale = this._zoomScale;
     const n = this._visibleNodeCount;
-    const store = this.store;
 
     if (this._highlightedId) return;
 
     const minScreenR = n > 15 ? 20 / scale : 6 / scale;
 
     this._labelSel.each(function (d) {
-      const r = store.nodeRadius(d);
+      const r = d._labelRadius;
       if (r >= minScreenR) {
         this.removeAttribute('display');
       } else {

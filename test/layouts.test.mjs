@@ -213,7 +213,7 @@ describe('radialTreeLayout', () => {
       ['leaf1', ['a']],
       ['leaf2', ['a']],
     ]);
-    radialTreeLayout(nodes, parentsOf, 400, 400);
+    radialTreeLayout(nodes, (id) => parentsOf.get(id) || [], 400, 400);
     const root = nodes.find((n) => n.id === 'root');
     const rootDist = Math.hypot(root.x - 200, root.y - 200);
     assert.ok(rootDist < 1e-6, 'root should be at center');
@@ -231,7 +231,7 @@ describe('radialTreeLayout', () => {
       ['y', ['x']],
       ['z', ['y']],
     ]);
-    radialTreeLayout(nodes, parentsOf, 600, 600);
+    radialTreeLayout(nodes, (id) => parentsOf.get(id) || [], 600, 600);
     const get = (id) => nodes.find((n) => n.id === id);
     const dR = dist(get('r'), { x: 300, y: 300 });
     const dX = dist(get('x'), { x: 300, y: 300 });
@@ -248,7 +248,7 @@ describe('radialTreeLayout', () => {
       ['c1', ['r1']],
       ['c2', ['r2']],
     ]);
-    radialTreeLayout(nodes, parentsOf, 400, 400);
+    radialTreeLayout(nodes, (id) => parentsOf.get(id) || [], 400, 400);
     const r1 = nodes.find((n) => n.id === 'r1');
     const r2 = nodes.find((n) => n.id === 'r2');
     // Both roots at center
@@ -259,7 +259,7 @@ describe('radialTreeLayout', () => {
   test('resets velocity', () => {
     const nodes = makeNodes(['r', 'c']);
     const parentsOf = new Map([['c', ['r']]]);
-    radialTreeLayout(nodes, parentsOf, 400, 400);
+    radialTreeLayout(nodes, (id) => parentsOf.get(id) || [], 400, 400);
     for (const node of nodes) {
       assert.equal(node.vx, 0);
       assert.equal(node.vy, 0);
@@ -267,12 +267,12 @@ describe('radialTreeLayout', () => {
   });
 
   test('empty input is a no-op', () => {
-    radialTreeLayout([], new Map(), 200, 200);
+    radialTreeLayout([], () => [], 200, 200);
   });
 
   test('single node goes to center', () => {
     const nodes = makeNodes(['solo']);
-    radialTreeLayout(nodes, new Map(), 200, 200);
+    radialTreeLayout(nodes, () => [], 200, 200);
     assert.equal(nodes[0].x, 100);
     assert.equal(nodes[0].y, 100);
   });
@@ -285,7 +285,7 @@ describe('radialTreeLayout', () => {
       ['b', ['r']],
       ['c', ['a', 'b']],
     ]);
-    radialTreeLayout(nodes, parentsOf, 600, 600);
+    radialTreeLayout(nodes, (id) => parentsOf.get(id) || [], 600, 600);
     const get = (id) => nodes.find((n) => n.id === id);
     const dR = dist(get('r'), { x: 300, y: 300 });
     const dC = dist(get('c'), { x: 300, y: 300 });

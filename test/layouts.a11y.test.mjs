@@ -89,7 +89,7 @@ test('SVG aria-label updates with active layout', async ({ page }) => {
   const svg = page.locator('#graph-container > svg[role="img"]');
 
   // Initial: force-directed
-  expect(await svg.getAttribute('aria-label')).toBe('Interactive force-directed graph visualization');
+  expect(await svg.getAttribute('aria-label')).toBe('Force-directed layout graph visualization');
 
   // Circle
   await page.locator('#select-layout').selectOption('circle');
@@ -119,7 +119,7 @@ test('SVG aria-label updates with active layout', async ({ page }) => {
   // Back to force
   await page.locator('#select-layout').selectOption('force');
   await page.waitForTimeout(300);
-  expect(await svg.getAttribute('aria-label')).toBe('Interactive force-directed graph visualization');
+  expect(await svg.getAttribute('aria-label')).toBe('Force-directed layout graph visualization');
 });
 
 test('layout change is announced to screen readers', async ({ page }) => {

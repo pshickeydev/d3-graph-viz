@@ -136,11 +136,11 @@ export function concentricLayout(nodes, edges, width, height, opts = {}) {
  * is used to form the tree structure.
  *
  * @param {Object[]}                 nodes
- * @param {Map<string, string[]>}    parentsOf — child-id → [parent-ids]
+ * @param {(id: string) => string[]} getParentIds — returns parent ids for a node
  * @param {number}                   width
  * @param {number}                   height
  */
-export function radialTreeLayout(nodes, parentsOf, width, height) {
+export function radialTreeLayout(nodes, getParentIds, width, height) {
   const n = nodes.length;
   if (n === 0) return;
   const cx = width / 2;
@@ -157,7 +157,7 @@ export function radialTreeLayout(nodes, parentsOf, width, height) {
   const treeChildren = new Map();
   const roots = [];
   for (const node of nodes) {
-    const parents = (parentsOf.get(node.id) || []).filter((p) => nodeSet.has(p));
+    const parents = getParentIds(node.id).filter((p) => nodeSet.has(p));
     if (parents.length === 0) {
       roots.push(node.id);
     } else {

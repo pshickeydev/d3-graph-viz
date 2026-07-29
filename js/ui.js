@@ -71,12 +71,12 @@ export function renderTypeFilters(el, store, onChange, onColorChange) {
       <span class="filter-count">${count.toLocaleString()}</span>
     `;
     label.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-      onChange(type, e.target.checked);
+      onChange(type, /** @type {HTMLInputElement} */ (e.target).checked);
     });
     const colorInput = label.querySelector('input[type="color"]');
     colorInput.addEventListener('input', (e) => {
       e.stopPropagation();
-      store.setTypeColor(type, e.target.value);
+      store.setTypeColor(type, /** @type {HTMLInputElement} */ (e.target).value);
       if (onColorChange) onColorChange();
     });
     colorInput.addEventListener('click', (e) => e.stopPropagation());
@@ -127,8 +127,8 @@ export function renderEdgeLegend(el, store, onColorChange) {
     input.setAttribute('aria-label', `Change colour for ${rel} edges`);
     input.addEventListener('input', (e) => {
       e.stopPropagation();
-      store.setRelColor(rel, e.target.value);
-      line.setAttribute('stroke', e.target.value);
+      store.setRelColor(rel, /** @type {HTMLInputElement} */ (e.target).value);
+      line.setAttribute('stroke', /** @type {HTMLInputElement} */ (e.target).value);
       if (onColorChange) onColorChange();
     });
     input.addEventListener('click', (e) => e.stopPropagation());
@@ -231,15 +231,15 @@ export function wireSearch(input, resultsList, store, onSelect) {
     } else if (e.key === 'Enter') {
       if (activeIndex >= 0 && items[activeIndex]) {
         e.preventDefault();
-        items[activeIndex].click();
+        /** @type {HTMLElement} */ (items[activeIndex]).click();
       }
     }
   };
 
-  input.removeEventListener('input', input._searchInput);
-  input.removeEventListener('keydown', input._searchKeydown);
-  input._searchInput = onInput;
-  input._searchKeydown = onKeydown;
+  input.removeEventListener('input', /** @type {any} */ (input)._searchInput);
+  input.removeEventListener('keydown', /** @type {any} */ (input)._searchKeydown);
+  /** @type {any} */ (input)._searchInput = onInput;
+  /** @type {any} */ (input)._searchKeydown = onKeydown;
   input.addEventListener('input', onInput);
   input.addEventListener('keydown', onKeydown);
   input.value = '';
@@ -410,7 +410,7 @@ export function renderAttrSelectors(el, store, onChange) {
       }
       fnSelect.value = store.rollupFn;
       fnSelect.addEventListener('change', () => {
-        store.setRollupFn(fnSelect.value);
+        store.setRollupFn(/** @type {'sum'|'max'} */ (fnSelect.value));
         onChange();
       });
       fnRow.appendChild(fnLabel);
@@ -813,11 +813,11 @@ export function renderForceControls(el, renderer, onChange) {
     input.type = 'range';
     input.className = 'force-slider';
     input.id = `force-${p.key}`;
-    input.min = p.min;
-    input.max = p.max;
-    input.step = p.step;
+    input.min = String(p.min);
+    input.max = String(p.max);
+    input.step = String(p.step);
     const snapped = Math.round(current[p.key] / p.step) * p.step;
-    input.value = snapped;
+    input.value = String(snapped);
     val.textContent = formatForceValue(snapped, p);
 
     input.addEventListener('input', () => {

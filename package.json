@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "node --test test/data.test.mjs test/layouts.test.mjs",
-    "test:visual": "npx playwright test"
+    "test:visual": "npx playwright test",
+    "typecheck": "tsc -p jsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -22,6 +23,7 @@
   },
   "homepage": "https://github.com/pshickeydev/d3-graph-viz#readme",
   "devDependencies": {
-    "@playwright/test": "^1.61.1"
+    "@playwright/test": "^1.61.1",
+    "typescript": "^7.0.2"
   }
 }

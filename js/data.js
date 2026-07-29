@@ -82,7 +82,7 @@ const MAX_DISTINCT_CATEGORICAL = 20;
  * @property {string}  type
  * @property {string}  label
  * @property {Object}  attrs
- * @property {number}  [childCount]  — total direct children
+ * @property {number}  [childCount]  - total direct children
  * @property {boolean} [expanded]
  */
 
@@ -100,6 +100,16 @@ const MAX_DISTINCT_CATEGORICAL = 20;
  * @property {Object}            [stats]
  * @property {GraphNode[]}       nodes
  * @property {GraphEdge[]}       edges
+ */
+
+/**
+ * @typedef {Object} AttrProfile
+ * @property {string}   key
+ * @property {'numeric'|'categorical'} kind
+ * @property {number}   [min]       - numeric only
+ * @property {number}   [max]       - numeric only
+ * @property {string[]} [values]    - categorical only
+ * @property {number}   count
  */
 
 export class GraphStore {
@@ -125,6 +135,9 @@ export class GraphStore {
     /** Set of currently expanded node ids. */
     this.expanded = new Set();
 
+    /** Currently selected node id, or null. */
+    this.selectedNodeId = null;
+
     /** Set of node type strings currently enabled for display. */
     this.enabledTypes = new Set();
 
@@ -133,6 +146,9 @@ export class GraphStore {
 
     /** Auto-assigned colour per node type. @type {Map<string, string>} */
     this.typeColors = new Map();
+
+    /** User colour overrides per node type; survive load(). @type {Map<string, string>} */
+    this._typeColorOverrides = new Map();
 
     /** Set of node types that appear as roots (no incoming edges). */
     this.rootTypes = new Set();
@@ -143,6 +159,9 @@ export class GraphStore {
     /** Auto-assigned colour per edge rel. @type {Map<string, string>} */
     this.relColors = new Map();
 
+    /** User colour overrides per edge rel; survive load(). @type {Map<string, string>} */
+    this._relColorOverrides = new Map();
+
     /** Auto-assigned dash pattern per edge rel. @type {Map<string, string|null>} */
     this.relDashes = new Map();
     /** @type {Map<string, number>} cached edge count per rel */
@@ -151,6 +170,14 @@ export class GraphStore {
     this._typeBaseRadius = new Map();
     /** @type {Map<string, number>} cached node count per type */
     this._typeCounts = new Map();
+
+    /**
+     * Set of node ids whose parents span 2+ distinct types (DAG diamonds).
+     * Computed once at load() since the check walks every parent and
+     * allocates a Set per call — too expensive to recompute per frame.
+     * @type {Set<string>}
+     */
+    this._multiParentIds = new Set();
 
     /** @type {Map<string, AttrProfile>} discovered attr metadata */
     this.attrProfiles = new Map();
@@ -186,6 +213,23 @@ export class GraphStore {
     this._rollupCache = new Map();
     /** @type {{min: number, max: number}|null} range of the rolled-up values */
     this._rollupRange = null;
+
+    /**
+     * Cached descendant sets per node id. Recomputed only when graph
+     * topology changes (load()), not when attrs change. The rollup
+     * aggregation step reads from these sets but they are attr-independent.
+     * @type {Map<string, Set<string>>|null}
+     */
+    this._descendantSets = null;
+
+    /**
+     * Per-attr rollup value cache. Tagged by attr key so switching
+     * back to a previously-used attr restores its values without
+     * recomputing descendant sets. Each entry stores the fn used so
+     * stale values from a different fn are not restored.
+     * @type {Map<string, {fn: string, values: Map<string, number>, range: {min: number, max: number}}>}
+     */
+    this._rollupCacheByAttr = new Map();
   }
 
   /* ---------------------------------------------------------------- */
@@ -206,6 +250,7 @@ export class GraphStore {
     this.edgesFrom.clear();
     this.edgesTo.clear();
     this.expanded.clear();
+    this.selectedNodeId = null;
     this._typeBaseRadius.clear();
     this._typeCounts.clear();
 
@@ -233,12 +278,44 @@ export class GraphStore {
       if (node) node.childCount = children.length;
     }
 
+    // Cache nodes whose parents span multiple types (DAG diamonds)
+    this._multiParentIds.clear();
+    for (const [id, parents] of this.parentsOf) {
+      if (parents.length < 2) continue;
+      const types = new Set();
+      for (const pid of parents) {
+        const pnode = this.nodeMap.get(pid);
+        if (pnode) types.add(pnode.type);
+        if (types.size > 1) {
+          this._multiParentIds.add(id);
+          break;
+        }
+      }
+    }
+
     this._deriveTypeInfo();
     this._deriveRelInfo();
 
     this.enabledTypes = new Set(this.typeList);
 
     this._discoverAttrs();
+    this._resetAttrState();
+
+    const levels = Math.max(this.typeList.length - 1, 1);
+    const maxR = 24, minR = 4;
+    this._typeBaseRadius.clear();
+    for (let i = 0; i < this.typeList.length; i++) {
+      const frac = i / levels;
+      this._typeBaseRadius.set(this.typeList[i], maxR * Math.pow(minR / maxR, frac));
+    }
+  }
+
+  /**
+   * Reset all attribute-mapping and rollup state to defaults.
+   * Called during load() and whenever the invariant "no attr mapping
+   * is active" needs to be re-established.
+   */
+  _resetAttrState() {
     this._colorAttr = null;
     this._sizeAttr = null;
     this._attrColorCache.clear();
@@ -248,16 +325,11 @@ export class GraphStore {
     this._colorScale = 'linear';
     this._rollupEnabled = false;
     this._rollupFn = 'sum';
-    this._rollupCache.clear();
+    this._rollupCache = new Map();
     this._rollupRange = null;
-
-    const levels = Math.max(this.typeList.length - 1, 1);
-    const maxR = 24, minR = 4;
-    this._typeBaseRadius.clear();
-    for (let i = 0; i < this.typeList.length; i++) {
-      const frac = i / levels;
-      this._typeBaseRadius.set(this.typeList[i], maxR * Math.pow(minR / maxR, frac));
-    }
+    // Topology changed — descendant sets and per-attr rollup caches are stale
+    this._descendantSets = null;
+    this._rollupCacheByAttr.clear();
   }
 
   /* ---------------------------------------------------------------- */
@@ -562,40 +634,22 @@ export class GraphStore {
   }
 
   /**
-   * Rebuild the rollup cache for the currently active numeric attr.
-   * Computes, for every node, the aggregate ('sum' or 'max') of the
-   * attr value across the node itself and all of its descendants.
-   * Descendants reachable via multiple paths (DAG diamonds) are
-   * counted once. Cycles in the input graph are handled by visiting
-   * each reachable node at most once per traversal.
+   * Compute descendant sets for every node (including self) and cache
+   * them on `this._descendantSets`. This is topology-dependent only —
+   * it does not read any attr values — so the result is reused across
+   * attr changes and rollup fn changes. Recomputed only when the graph
+   * is loaded or when `this._descendantSets` is null.
    *
-   * We compute each node's descendant set (including itself) via a
-   * BFS and cache the result. For DAG regions we short-circuit: if
-   * all of a node's children already have cached sets, we union
-   * them instead of running a fresh BFS. Total work is bounded at
-   * O(V × (V + E)) — each node's set is computed at most once.
+   * For DAG regions we short-circuit: if all of a node's children
+   * already have cached sets, we union them instead of running a fresh
+   * BFS. Total work is bounded at O(V × (V + E)) — each node's set is
+   * computed at most once.
    */
-  _rebuildRollup() {
-    this._rollupCache.clear();
-    this._rollupRange = null;
+  _ensureDescendantSets() {
+    if (this._descendantSets) return this._descendantSets;
 
-    const attrKey = this._sizeAttr || this._colorAttr;
-    if (!attrKey) return;
-    const profile = this.attrProfiles.get(attrKey);
-    if (!profile || profile.kind !== 'numeric') return;
-
-    const fn = this._rollupFn;
     const childrenOf = this.childrenOf;
-    const selfAttr = (id) => {
-      const node = this.nodeMap.get(id);
-      if (!node || !node.attrs) return null;
-      const raw = node.attrs[attrKey];
-      if (raw == null || raw === '') return null;
-      const num = Number(raw);
-      return isNaN(num) ? null : num;
-    };
-
-    /** @type {Map<string, Set<string>>} cached descendant sets */
+    /** @type {Map<string, Set<string>>} */
     const cache = new Map();
 
     const bfsReachability = (start) => {
@@ -650,9 +704,53 @@ export class GraphStore {
       descendantSet(id);
     }
 
+    this._descendantSets = cache;
+    return cache;
+  }
+
+  /**
+   * Rebuild the rollup value cache for the currently active numeric attr.
+   * Reads descendant sets from `_ensureDescendantSets()` (topology-only,
+   * cached across attr changes) and aggregates the active attr's values
+   * over each set. The result is tagged by attr key so switching back
+   * to a previously-used attr restores its cached values without
+   * recomputing descendant sets.
+   */
+  _rebuildRollup() {
+    // Assign a fresh Map rather than clearing — the current reference
+    // may be shared with a cached entry in _rollupCacheByAttr.
+    this._rollupCache = new Map();
+    this._rollupRange = null;
+
+    const attrKey = this._sizeAttr || this._colorAttr;
+    if (!attrKey) return;
+    const profile = this.attrProfiles.get(attrKey);
+    if (!profile || profile.kind !== 'numeric') return;
+
+    // Restore cached values for this attr if the fn matches
+    const cached = this._rollupCacheByAttr.get(attrKey);
+    if (cached && cached.fn === this._rollupFn) {
+      this._rollupCache = cached.values;
+      this._rollupRange = cached.range;
+      return;
+    }
+
+    const fn = this._rollupFn;
+    const selfAttr = (id) => {
+      const node = this.nodeMap.get(id);
+      if (!node || !node.attrs) return null;
+      const raw = node.attrs[attrKey];
+      if (raw == null || raw === '') return null;
+      const num = Number(raw);
+      return isNaN(num) ? null : num;
+    };
+
+    const descendantSets = this._ensureDescendantSets();
+
     let min = Infinity, max = -Infinity;
+    const values = new Map();
     for (const id of this.nodeMap.keys()) {
-      const set = cache.get(id);
+      const set = descendantSets.get(id);
       if (!set) continue;
       let result = null;
       let hasValue = false;
@@ -669,33 +767,38 @@ export class GraphStore {
         }
       }
       if (hasValue) {
-        this._rollupCache.set(id, result);
+        values.set(id, result);
         if (result < min) min = result;
         if (result > max) max = result;
       }
     }
 
     if (min <= max) {
+      this._rollupCache = values;
       this._rollupRange = { min, max };
+      // Tag by attr key and fn so switching back restores without recomputation
+      this._rollupCacheByAttr.set(attrKey, { fn, values, range: { min, max } });
     }
   }
 
   /**
-   * Set a user override for a type colour.
+   * Set a user override for a type colour. Overrides persist across
+   * load() calls; pass the type's auto-assigned colour to reset.
    * @param {string} type
    * @param {string} color — hex colour
    */
   setTypeColor(type, color) {
-    this.typeColors.set(type, color);
+    this._typeColorOverrides.set(type, color);
   }
 
   /**
-   * Set a user override for an edge rel colour.
+   * Set a user override for an edge rel colour. Overrides persist
+   * across load() calls.
    * @param {string} rel
    * @param {string} color — hex colour
    */
   setRelColor(rel, color) {
-    this.relColors.set(rel, color);
+    this._relColorOverrides.set(rel, color);
   }
 
   /**
@@ -732,7 +835,7 @@ export class GraphStore {
   /**
    * Get the current colour legend data for the active colour mapping.
    * Returns null when no colour attr is active (use type filters as legend).
-   * @returns {{ kind: string, ... }|null}
+   * @returns {Object|null}
    */
   getColorLegend() {
     if (!this._colorAttr) return null;
@@ -1067,9 +1170,11 @@ export class GraphStore {
     return this._relCounts.get(rel) || 0;
   }
 
-  /** Get colour for a node type. */
+  /** Get colour for a node type. User overrides take precedence. */
   colorForType(type) {
-    return this.typeColors.get(type) || DEFAULT_COLOR;
+    return this._typeColorOverrides.get(type)
+      || this.typeColors.get(type)
+      || DEFAULT_COLOR;
   }
 
   /**
@@ -1097,9 +1202,11 @@ export class GraphStore {
     return 1;
   }
 
-  /** Get colour for an edge rel. */
+  /** Get colour for an edge rel. User overrides take precedence. */
   colorForRel(rel) {
-    return this.relColors.get(rel) || DEFAULT_COLOR;
+    return this._relColorOverrides.get(rel)
+      || this.relColors.get(rel)
+      || DEFAULT_COLOR;
   }
 
   /** Get dash pattern for an edge rel. */
@@ -1207,21 +1314,23 @@ export class GraphStore {
   }
 
   /**
+   * Get direct parent ids of a node.
+   * @param {string} nodeId
+   * @returns {string[]}
+   */
+  parentIds(nodeId) {
+    return this.parentsOf.get(nodeId) || [];
+  }
+
+  /**
    * Check whether a node has parents of more than one type (a DAG
-   * diamond). Used by the renderer to add a visual marker.
+   * diamond). Used by the renderer to add a visual marker. Result is
+   * precomputed at load() time.
    * @param {string} nodeId
    * @returns {boolean}
    */
   hasMultipleParentTypes(nodeId) {
-    const parents = this.parentsOf.get(nodeId);
-    if (!parents || parents.length < 2) return false;
-    const types = new Set();
-    for (const pid of parents) {
-      const pnode = this.nodeMap.get(pid);
-      if (pnode) types.add(pnode.type);
-      if (types.size > 1) return true;
-    }
-    return false;
+    return this._multiParentIds.has(nodeId);
   }
 }
 

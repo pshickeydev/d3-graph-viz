@@ -708,6 +708,29 @@ describe('colour overrides', () => {
     const ramp = store.getHeatRamp();
     assert.notEqual(ramp[0], '#000000');
   });
+
+  test('type colour overrides persist across load()', () => {
+    const { store } = createStore(100, 100);
+    const type = store.typeList[0];
+    store.setTypeColor(type, '#ff0000');
+    assert.equal(store.colorForType(type), '#ff0000');
+    // Reload a fresh graph that includes the same type name
+    const fresh = generateGraph(50, 50);
+    store.load(fresh);
+    assert.ok(store.typeList.includes(type), 'fresh graph should include same type');
+    assert.equal(store.colorForType(type), '#ff0000');
+  });
+
+  test('rel colour overrides persist across load()', () => {
+    const { store } = createStore(100, 100);
+    const rel = store.relList[0];
+    store.setRelColor(rel, '#00ff00');
+    assert.equal(store.colorForRel(rel), '#00ff00');
+    const fresh = generateGraph(50, 50);
+    store.load(fresh);
+    assert.ok(store.relList.includes(rel), 'fresh graph should include same rel');
+    assert.equal(store.colorForRel(rel), '#00ff00');
+  });
 });
 
 describe('getColorLegend', () => {
@@ -1442,5 +1465,42 @@ describe('rollup — performance on large graph', () => {
       if (store.rollupValue(node) != null) withValue++;
     }
     assert.ok(withValue > 5000, 'most nodes should have a rollup value');
+  });
+
+  test('switching attrs restores cached rollup values without recomputing descendant sets', () => {
+    const { store } = createStore(1000, 1000);
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    const scoreValue = store.rollupValue(store.nodeMap.get('n0'));
+    assert.ok(scoreValue != null, 'score rollup should have a value');
+
+    // Switch to another attr — descendant sets are reused, not recomputed
+    store.setColorAttr('weight');
+    const weightValue = store.rollupValue(store.nodeMap.get('n0'));
+    assert.ok(weightValue != null, 'weight rollup should have a value');
+    assert.notEqual(scoreValue, weightValue, 'different attrs should give different rollups');
+
+    // Switch back — cached values are restored exactly
+    store.setColorAttr('score');
+    const restored = store.rollupValue(store.nodeMap.get('n0'));
+    assert.equal(restored, scoreValue, 'restored rollup should match original');
+  });
+
+  test('changing rollup fn invalidates per-attr cache', () => {
+    const { store } = createStore(1000, 1000);
+    store.setColorAttr('score');
+    store.setRollupEnabled(true);
+    const sumValue = store.rollupValue(store.nodeMap.get('n0'));
+    assert.ok(sumValue != null);
+
+    store.setRollupFn('max');
+    const maxValue = store.rollupValue(store.nodeMap.get('n0'));
+    assert.ok(maxValue != null);
+    assert.ok(maxValue <= sumValue, 'max should be <= sum');
+
+    // Switching back to sum should restore the original value
+    store.setRollupFn('sum');
+    const restored = store.rollupValue(store.nodeMap.get('n0'));
+    assert.equal(restored, sumValue, 'fn switch back should restore original value');
   });
 });
