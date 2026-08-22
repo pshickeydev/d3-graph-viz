@@ -19,6 +19,7 @@ import {
   concentricLayout,
   radialTreeLayout,
   avsdfLayout,
+  groupedDiscreteLayout,
   LAYOUT_LABELS,
 } from './layouts.js';
 
@@ -35,11 +36,12 @@ function _truncateLabel(text, max) {
 /*  Cluster force — pulls each node toward its type's cluster center    */
 /* ------------------------------------------------------------------ */
 
-function forceCluster(clusterCenters, strength) {
+function forceCluster(clusterCenters, strength, keyFn) {
   let nodes;
+  const keyOf = keyFn || ((node) => node.type);
   function force(alpha) {
     for (const node of nodes) {
-      const center = clusterCenters.get(node.type);
+      const center = clusterCenters.get(keyOf(node));
       if (!center) continue;
       node.vx += (center.x - node.x) * strength * alpha;
       node.vy += (center.y - node.y) * strength * alpha;
@@ -101,6 +103,12 @@ export class GraphRenderer {
     this._edgeWeights = new Map();
     /** Active layout key: 'force' | 'circle' | 'grid' | 'concentric' | 'radial' */
     this._layout = 'force';
+    /**
+     * Cluster regions from the grouped discrete layout, keyed by group.
+     * Only set when grouping is enabled and a discrete layout is active.
+     * @type {Map<string, {cx: number, cy: number, w: number, h: number}>|null}
+     */
+    this._groupRegions = null;
 
     this._init();
   }
@@ -133,10 +141,12 @@ export class GraphRenderer {
         this._zoomScale = event.transform.k;
         if (Math.abs(event.transform.k - prevScale) / (prevScale || 1) > 0.05) {
           this._updateLabelVisibility();
+          this._updateHullLabelVisibility();
         }
       })
       .on('end', () => {
         this._updateLabelVisibility();
+        this._updateHullLabelVisibility();
       });
 
     this.svg.call(this._zoom);
@@ -154,6 +164,7 @@ export class GraphRenderer {
       .attr('fill', 'transparent');
 
     // Sub-groups for draw ordering
+    this.g.append('g').attr('class', 'hulls');
     this.g.append('g').attr('class', 'links');
     this.g.append('g').attr('class', 'nodes');
     this.g.append('g').attr('class', 'labels');
@@ -177,8 +188,8 @@ export class GraphRenderer {
       this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
       this.simulation.force('x').x(this.width / 2);
       this.simulation.force('y').y(this.height / 2);
-      const clusterCenters = this.store.clusterCenters(this.width, this.height);
-      this.simulation.force('cluster', forceCluster(clusterCenters, this._clusterStrength));
+      const clusterCenters = this._clusterCentersForForce();
+      this.simulation.force('cluster', forceCluster(clusterCenters, this._clusterStrength, this._clusterKeyFn()));
       // Discrete layouts are viewport-relative — recompute positions on resize.
       if (!this.isForceLayout()) {
         this._applyDiscreteLayout(this.simulation.nodes(), this._lastEdges);
@@ -215,6 +226,7 @@ export class GraphRenderer {
     this.simulation.force('link').links([]);
 
     // Clear rendered DOM
+    this.g.select('.hulls').selectAll('*').remove();
     this.g.select('.links').selectAll('*').remove();
     this.g.select('.nodes').selectAll('*').remove();
     this.g.select('.labels').selectAll('*').remove();
@@ -235,6 +247,7 @@ export class GraphRenderer {
     this._lastEdges = [];
     this._edgeWeights = new Map();
     this._layout = 'force';
+    this._groupRegions = null;
     this.svg.attr('aria-label', this._ariaLabel());
 
     // Reset zoom so the new graph starts un-transformed
@@ -300,7 +313,7 @@ export class GraphRenderer {
     }
 
     // Compute cluster centers for initial placement and cluster force
-    const clusterCenters = store.clusterCenters(this.width, this.height);
+    const clusterCenters = this._clusterCentersForForce(nodes);
 
     const spread = Math.min(50 + nodes.length * 0.15, 400);
     const simNodes = nodes.map((n) => {
@@ -458,6 +471,7 @@ export class GraphRenderer {
       this.simulation.nodes(simNodes);
       this.simulation.force('link').links(linkData);
       this._tick();
+      this._drawGroupRegions();
       this.fitToView();
       return;
     }
@@ -559,29 +573,64 @@ export class GraphRenderer {
 
   /**
    * Apply the active discrete layout to the visible nodes.
+   * When grouping is enabled, the chosen layout runs per-cluster via
+   * groupedDiscreteLayout() and the resulting regions are stored on
+   * `this._groupRegions` so the renderer can draw labelled regions
+   * without recomputing hulls.
    * @param {Object[]} simNodes
    * @param {Object[]} edges
    */
   _applyDiscreteLayout(simNodes, edges) {
     const store = this.store;
-    switch (this._layout) {
-      case 'circle':
-        circleLayout(simNodes, this.width, this.height);
-        break;
-      case 'grid':
-        gridLayout(simNodes, this.width, this.height);
-        break;
-      case 'concentric':
-        concentricLayout(simNodes, edges, this.width, this.height);
-        break;
-      case 'radial':
-        radialTreeLayout(simNodes, (id) => store.parentIds(id), this.width, this.height);
-        break;
-      case 'avsdf':
-        avsdfLayout(simNodes, edges, this.width, this.height);
-        break;
-      default:
-        break;
+    const grouped = store.groupingEnabled;
+    /** @type {any} */
+    const fn = (() => {
+      switch (this._layout) {
+        case 'circle': return circleLayout;
+        case 'grid': return gridLayout;
+        case 'concentric': return concentricLayout;
+        case 'radial': return radialTreeLayout;
+        case 'avsdf': return avsdfLayout;
+        default: return null;
+      }
+    })();
+    if (!fn) return;
+    if (grouped) {
+      this._groupRegions = groupedDiscreteLayout(
+        (nodes, w, h, opts) => {
+          if (this._layout === 'concentric' || this._layout === 'avsdf') {
+            fn(nodes, edges, w, h, opts);
+          } else if (this._layout === 'radial') {
+            fn(nodes, (id) => store.parentIds(id), w, h);
+          } else {
+            fn(nodes, w, h, opts);
+          }
+        },
+        store.visibleGroups(simNodes),
+        this.width,
+        this.height,
+      );
+    } else {
+      this._groupRegions = null;
+      switch (this._layout) {
+        case 'circle':
+          circleLayout(simNodes, this.width, this.height);
+          break;
+        case 'grid':
+          gridLayout(simNodes, this.width, this.height);
+          break;
+        case 'concentric':
+          concentricLayout(simNodes, edges, this.width, this.height);
+          break;
+        case 'radial':
+          radialTreeLayout(simNodes, (id) => store.parentIds(id), this.width, this.height);
+          break;
+        case 'avsdf':
+          avsdfLayout(simNodes, edges, this.width, this.height);
+          break;
+        default:
+          break;
+      }
     }
   }
 
@@ -589,9 +638,45 @@ export class GraphRenderer {
   /*  Force tuning                                                     */
   /* ---------------------------------------------------------------- */
 
+  /**
+   * Cluster centers for the force simulation. When grouping is
+   * enabled and grouping by component, key centers by the active
+   * group over the visible nodes; otherwise fall back to the
+   * per-type clusterCenters().
+   * @param {Object[]} [nodes] - visible nodes; falls back to the
+   *   current simulation nodes when omitted
+   * @returns {Map<string, {x: number, y: number}>}
+   */
+  _clusterCentersForForce(nodes) {
+    const store = this.store;
+    if (store.groupingEnabled && store.groupBy === 'component') {
+      return store.groupCenters(this.width, this.height, nodes || this.simulation.nodes());
+    }
+    return store.clusterCenters(this.width, this.height);
+  }
+
+  /**
+   * Key function for the cluster force. Grouping by component needs
+   * the group key; otherwise the default per-type key applies.
+   * @returns {function}
+   */
+  _clusterKeyFn() {
+    const store = this.store;
+    if (store.groupingEnabled && store.groupBy === 'component') {
+      return (node) => store.groupKeyFor(node);
+    }
+    return null;
+  }
+
   _tuneForces(nodeCount, clusterCenters) {
     const n = Math.max(nodeCount, 1);
     const t = Math.min(n / 500, 1);
+
+    // The collision force is temporarily removed during pre-tick; a
+    // re-render that lands mid-pre-tick must restore it before tuning.
+    if (!this.simulation.force('collision')) {
+      this.simulation.force('collision', d3.forceCollide());
+    }
 
     const labelPad = this.showLabels ? 12 : 4;
 
@@ -599,7 +684,11 @@ export class GraphRenderer {
       chargeStrength: -60 - t * 60,
       linkDistance: 30 + (1 - t) * 30,
       gravity: 0.03 * (1 - t * 0.6),
-      clusterStrength: t * 0.06,
+      // When grouping is enabled the cluster force needs a higher
+      // floor so hulls are actually compact, not just loosely grouped.
+      clusterStrength: this.store.groupingEnabled
+        ? Math.max(t * 0.06, 0.12)
+        : t * 0.06,
       collisionPad: labelPad,
     };
 
@@ -631,7 +720,7 @@ export class GraphRenderer {
       .force('y')
       .strength(p.gravity);
     this.simulation
-      .force('cluster', forceCluster(clusterCenters, p.clusterStrength));
+      .force('cluster', forceCluster(clusterCenters, p.clusterStrength, this._clusterKeyFn()));
     this.simulation
       .alphaDecay(alphaDecay)
       .velocityDecay(velocityDecay);
@@ -662,14 +751,17 @@ export class GraphRenderer {
   _applyForceOverrides() {
     const p = this._effectiveForceParams();
     this._clusterStrength = p.clusterStrength;
+    if (!this.simulation.force('collision')) {
+      this.simulation.force('collision', d3.forceCollide());
+    }
     this.simulation.force('link').distance(p.linkDistance).strength(null);
     this.simulation.force('charge').strength(p.chargeStrength);
     this.simulation.force('collision')
       .radius((d) => this.store.nodeRadius(d) + p.collisionPad);
     this.simulation.force('x').strength(p.gravity);
     this.simulation.force('y').strength(p.gravity);
-    const clusterCenters = this.store.clusterCenters(this.width, this.height);
-    this.simulation.force('cluster', forceCluster(clusterCenters, p.clusterStrength));
+    const clusterCenters = this._clusterCentersForForce();
+    this.simulation.force('cluster', forceCluster(clusterCenters, p.clusterStrength, this._clusterKeyFn()));
     if (!this._paused) {
       this.simulation.alpha(0.3).restart();
     }
@@ -764,6 +856,178 @@ export class GraphRenderer {
         .attr('x', (d) => d.x)
         .attr('y', (d) => d.y);
     }
+    this._drawHulls();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Grouping (hulls + discrete regions)                             */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Draw convex-hull hulls around visible groups (force layout).
+   * Called on every tick so hulls track node motion. Above 1k visible
+   * nodes the per-tick hull recompute is too costly, so hulls are only
+   * drawn when the simulation has settled (alpha < 0.05) and on discrete
+   * renders. Hulls are data-joined per group key so toggling grouping or
+   * changing the group-by key re-joins cheaply.
+   */
+  _drawHulls() {
+    const store = this.store;
+    const hulls = this.g.select('.hulls');
+    if (!store.groupingEnabled || this._visibleNodeCount < 2) {
+      hulls.selectAll('*').remove();
+      return;
+    }
+    if (this._visibleNodeCount > 1000 && this.simulation.alpha() >= 0.05) {
+      // Deferred: wait for the simulation to settle before drawing hulls
+      // so the per-tick O(k n log n) hull cost is not paid every frame.
+      return;
+    }
+    const simNodes = this.simulation.nodes();
+    const groups = store.visibleGroups(simNodes);
+    const entries = [...groups.entries()].filter(([, nodes]) => nodes.length >= 2);
+    const pad = this._maxNodeRadius() + 12;
+
+    const hullData = entries.map(([key, nodes]) => {
+      const pts = nodes.map((/** @type {any} */ n) => [n.x, n.y]);
+      const hull = d3.polygonHull(pts);
+      if (!hull || hull.length < 3) return null;
+      const centroid = d3.polygonCentroid(hull);
+      // Push each hull vertex outward from the centroid so nodes sit
+      // comfortably inside the band rather than on its edge.
+      const padded = hull.map(([px, py]) => {
+        const dx = px - centroid[0];
+        const dy = py - centroid[1];
+        const len = Math.hypot(dx, dy) || 1;
+        return [px + (dx / len) * pad, py + (dy / len) * pad];
+      });
+      return { key, hull: padded, centroid, count: nodes.length, color: store.groupColor(key) };
+    }).filter(Boolean);
+
+    const hullSel = hulls.selectAll('path.hull')
+      .data(hullData, (d) => d.key)
+      .join(
+        (enter) => enter.append('path')
+          .attr('class', 'hull')
+          .attr('fill', (d) => d.color)
+          .attr('fill-opacity', 0.08)
+          .attr('stroke', (d) => d.color)
+          .attr('stroke-opacity', 0.35)
+          .attr('stroke-width', 1)
+          .attr('pointer-events', 'none'),
+        (update) => update,
+        (exit) => exit.remove(),
+      );
+    hullSel.attr('d', (d) => `M${d.hull.map((p) => `${p[0]},${p[1]}`).join('L')}Z`);
+
+    // Labels at hull centroids, hidden when zoomed out. Visibility is
+    // toggled via the display attribute so zooming back in can reveal
+    // them again without a full hull recompute.
+    const labelSel = hulls.selectAll('text.hull-label')
+      .data(hullData, (d) => d.key)
+      .join(
+        (enter) => enter.append('text')
+          .attr('class', 'hull-label')
+          .attr('fill', '#94a3b8')
+          .attr('font-size', 11)
+          .attr('text-anchor', 'middle')
+          .attr('pointer-events', 'none'),
+        (update) => update,
+        (exit) => exit.remove(),
+      );
+    labelSel
+      .attr('x', (d) => d.centroid[0])
+      .attr('y', (d) => d.centroid[1])
+      .text((d) => `${store.groupLabel(d.key)} (${d.count})`);
+    this._updateHullLabelVisibility();
+  }
+
+  /** Show/hide hull labels for the current zoom scale. */
+  _updateHullLabelVisibility() {
+    const hulls = this.g && this.g.select('.hulls');
+    if (!hulls) return;
+    const show = this._zoomScale >= 0.4;
+    hulls.selectAll('text.hull-label').each(function () {
+      if (show) {
+        this.removeAttribute('display');
+      } else {
+        this.setAttribute('display', 'none');
+      }
+    });
+  }
+
+  /**
+   * Draw labelled rounded-rect regions for grouped discrete layouts.
+   * Regions come from groupedDiscreteLayout() and never move, so this
+   * runs once per render rather than per tick. Single-member groups get
+   * no region or label — same rule as force-mode hulls — so root-heavy
+   * initial views stay uncluttered.
+   */
+  _drawGroupRegions() {
+    const store = this.store;
+    const hulls = this.g.select('.hulls');
+    if (!store.groupingEnabled || !this._groupRegions) {
+      hulls.selectAll('*').remove();
+      return;
+    }
+    // Member counts for labels, from the visible nodes partitioned by group.
+    const counts = new Map();
+    for (const n of this.simulation.nodes()) {
+      const key = store.groupKeyFor(n);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const regions = [...this._groupRegions.entries()]
+      .filter(([key]) => (counts.get(key) || 0) >= 2)
+      .map(([key, r]) => ({
+        key, ...r, color: store.groupColor(key), count: counts.get(key) || 0,
+      }));
+    const rectSel = hulls.selectAll('rect.group-region')
+      .data(regions, (d) => d.key)
+      .join(
+        (enter) => enter.append('rect')
+          .attr('class', 'group-region')
+          .attr('fill', (d) => d.color)
+          .attr('fill-opacity', 0.08)
+          .attr('stroke', (d) => d.color)
+          .attr('stroke-opacity', 0.35)
+          .attr('stroke-width', 1)
+          .attr('rx', 8)
+          .attr('pointer-events', 'none'),
+        (update) => update,
+        (exit) => exit.remove(),
+      );
+    rectSel
+      .attr('x', (d) => d.cx - d.w / 2)
+      .attr('y', (d) => d.cy - d.h / 2)
+      .attr('width', (d) => d.w)
+      .attr('height', (d) => d.h);
+
+    const labelSel = hulls.selectAll('text.group-region-label')
+      .data(regions, (d) => d.key)
+      .join(
+        (enter) => enter.append('text')
+          .attr('class', 'group-region-label')
+          .attr('fill', '#94a3b8')
+          .attr('font-size', 11)
+          .attr('text-anchor', 'middle')
+          .attr('pointer-events', 'none'),
+        (update) => update,
+        (exit) => exit.remove(),
+      );
+    labelSel
+      .attr('x', (d) => d.cx)
+      .attr('y', (d) => d.cy - d.h / 2 + 14)
+      .text((d) => `${store.groupLabel(d.key)} (${d.count})`);
+  }
+
+  /** Largest visible node radius, used to pad hulls. @returns {number} */
+  _maxNodeRadius() {
+    let max = 0;
+    for (const n of this.simulation.nodes()) {
+      const r = this.store.nodeRadius(n);
+      if (r > max) max = r;
+    }
+    return max;
   }
 
   /* ---------------------------------------------------------------- */

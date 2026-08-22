@@ -357,3 +357,234 @@ test('rollup changes node colours when enabled', async ({ page }) => {
 
   expect(errors).toEqual([]);
 });
+
+/* ================================================================
+ *  Grouping (compound / cluster)
+ * ================================================================ */
+
+test('grouping toggle renders one hull per visible type', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Enable grouping (default: by node type)
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+
+  const hulls = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+  expect(hulls).toBeGreaterThan(0);
+  // At most one hull per visible type
+  const types = await page.evaluate(() => {
+    const checked = [...document.querySelectorAll('#type-filters input[type="checkbox"]')]
+      .filter((c) => c.checked).length;
+    return checked;
+  });
+  expect(hulls).toBeLessThanOrEqual(types);
+
+  expect(errors).toEqual([]);
+});
+
+test('hull count updates after type-filter toggle and expand-all', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+  const before = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+
+  // Expand all — more visible nodes means more (or same) hulls
+  await page.locator('#btn-expand-all').click();
+  await page.waitForTimeout(1500);
+  const afterExpand = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+  expect(afterExpand).toBeGreaterThanOrEqual(before);
+
+  // Toggle off a type filter — hull count should drop or stay consistent
+  const firstCheckbox = page.locator('#type-filters input[type="checkbox"]').first();
+  if (await firstCheckbox.isChecked()) {
+    await firstCheckbox.uncheck();
+    await page.waitForTimeout(800);
+    const afterFilter = await page.evaluate(
+      () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+    );
+    expect(afterFilter).toBeLessThanOrEqual(afterExpand);
+  }
+
+  expect(errors).toEqual([]);
+});
+
+test('selection survives enabling and disabling grouping', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Select a node via search (reveals ancestors and selects)
+  await page.locator('#search-input').fill('Node 1');
+  await page.waitForTimeout(400);
+  await page.locator('#search-results [role="option"]').first().click();
+  await page.waitForTimeout(500);
+  expect(await page.locator('#detail-modal').isVisible()).toBe(true);
+
+  // Enable grouping — selection should persist (detail modal stays open)
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+  expect(await page.locator('#detail-modal').isVisible()).toBe(true);
+
+  // Disable grouping — selection should still persist
+  await page.locator('#grouping-enabled').uncheck();
+  await page.waitForTimeout(800);
+  expect(await page.locator('#detail-modal').isVisible()).toBe(true);
+
+  expect(errors).toEqual([]);
+});
+
+test('grouping works with a discrete layout active', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Switch to circle layout first
+  await page.locator('#select-layout').selectOption('circle');
+  await page.waitForTimeout(500);
+
+  // Enable grouping — regions should render instead of hulls
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+
+  const regions = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls rect.group-region').length,
+  );
+  expect(regions).toBeGreaterThan(0);
+  const regionLabels = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls text.group-region-label').length,
+  );
+  expect(regionLabels).toBe(regions);
+
+  // Switch to another discrete layout — still no errors, regions persist
+  await page.locator('#select-layout').selectOption('grid');
+  await page.waitForTimeout(800);
+  const regionsGrid = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls rect.group-region').length,
+  );
+  expect(regionsGrid).toBeGreaterThan(0);
+
+  expect(errors).toEqual([]);
+});
+
+test('group-by switch to connected component changes hull count', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+  const typeHulls = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+
+  await page.locator('#select-group-by').selectOption('component');
+  await page.waitForTimeout(800);
+  const componentHulls = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+  // A connected graph should have fewer (or equal) component hulls than type hulls
+  expect(componentHulls).toBeLessThanOrEqual(typeHulls);
+
+  expect(errors).toEqual([]);
+});
+
+test('hull labels appear when zoomed in and hide when zoomed out', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+
+  const visibleHullLabels = () => page.evaluate(
+    () => [...document.querySelectorAll('#graph-container .hulls text.hull-label')]
+      .filter((t) => t.getAttribute('display') !== 'none').length,
+  );
+
+  // At fit-to-view zoom the labels are shown
+  expect(await visibleHullLabels()).toBeGreaterThan(0);
+
+  // Zoom out past the threshold — labels hidden via display attribute
+  const svg = page.getByRole('img', { name: /layout graph visualization/ });
+  await svg.hover();
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(120);
+  }
+  expect(await visibleHullLabels()).toBe(0);
+
+  // Zoom back in — labels must reappear without losing the hulls
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(400);
+  expect(await visibleHullLabels()).toBeGreaterThan(0);
+
+  expect(errors).toEqual([]);
+});
+
+test('single-member groups render no region or label in discrete layouts', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  await page.locator('#select-layout').selectOption('circle');
+  await page.waitForTimeout(500);
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(800);
+
+  // The fixture's initial view has exactly one singleton type ('root'):
+  // it must not get a region or a label, matching force-mode hulls.
+  const labelTexts = await page.evaluate(
+    () => [...document.querySelectorAll('#graph-container .hulls text.group-region-label')]
+      .map((t) => t.textContent),
+  );
+  expect(labelTexts.length).toBeGreaterThan(0);
+  expect(labelTexts.some((t) => t.startsWith('root '))).toBe(false);
+  for (const t of labelTexts) {
+    const count = Number(t.match(/\((\d+)\)/)?.[1] || 0);
+    expect(count).toBeGreaterThanOrEqual(2);
+  }
+
+  expect(errors).toEqual([]);
+});

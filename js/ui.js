@@ -775,8 +775,69 @@ export function renderLayoutSelector(el, renderer, onChange) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Force controls                                                     */
+/*  Grouping controls                                                  */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Render the grouping controls: an enable checkbox and a "Group by"
+ * dropdown (Node type / Connected component). The dropdown is disabled
+ * until grouping is enabled.
+ * @param {HTMLElement} el
+ * @param {import('./data.js').GraphStore} store
+ * @param {function}    onChange — called after any grouping change
+ */
+export function renderGroupingControls(el, store, onChange) {
+  el.innerHTML = '';
+
+  const checkRow = document.createElement('label');
+  checkRow.className = 'rollup-toggle grouping-toggle';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.id = 'grouping-enabled';
+  checkbox.checked = store.groupingEnabled;
+  checkbox.setAttribute('aria-label', 'Group nodes into clusters');
+  checkbox.addEventListener('change', () => {
+    store.setGroupingEnabled(checkbox.checked);
+    if (onChange) onChange();
+  });
+  const checkLabel = document.createElement('span');
+  checkLabel.textContent = 'Group nodes into clusters';
+  checkRow.appendChild(checkbox);
+  checkRow.appendChild(checkLabel);
+  el.appendChild(checkRow);
+
+  const row = document.createElement('div');
+  row.className = 'attr-selector-row grouping-row';
+  const label = document.createElement('label');
+  label.className = 'attr-selector-label';
+  label.textContent = 'Group by';
+  label.htmlFor = 'select-group-by';
+  const select = document.createElement('select');
+  select.className = 'attr-selector';
+  select.id = 'select-group-by';
+  select.setAttribute('aria-label', 'Grouping key');
+
+  const opts = [
+    { value: 'type', text: 'Node type' },
+    { value: 'component', text: 'Connected component' },
+  ];
+  for (const o of opts) {
+    const opt = document.createElement('option');
+    opt.value = o.value;
+    opt.textContent = o.text;
+    select.appendChild(opt);
+  }
+  select.value = store.groupBy;
+  select.disabled = !store.groupingEnabled;
+  select.addEventListener('change', () => {
+    store.setGroupBy(/** @type {'type'|'component'} */ (select.value));
+    if (onChange) onChange();
+  });
+
+  row.appendChild(label);
+  row.appendChild(select);
+  el.appendChild(row);
+}
 
 const FORCE_PARAMS = [
   { key: 'chargeStrength', label: 'Repulsion', min: -200, max: 0, step: 1 },

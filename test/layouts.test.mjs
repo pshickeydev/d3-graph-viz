@@ -6,6 +6,7 @@ import {
   concentricLayout,
   radialTreeLayout,
   avsdfLayout,
+  groupedDiscreteLayout,
   DISCRETE_LAYOUTS,
   ALL_LAYOUTS,
   LAYOUT_LABELS,
@@ -518,5 +519,149 @@ describe('avsdfLayout', () => {
     // 4-cycle + one chord has a 0-crossing layout; confirm no more than 1.
     const c = countCircularCrossings(order, edges);
     assert.ok(c <= 1, `expected at most 1 crossing, got ${c}`);
+  });
+});
+
+/* ================================================================
+ *  groupedDiscreteLayout
+ * ================================================================ */
+
+describe('groupedDiscreteLayout', () => {
+  function makeGroupedNodes(count) {
+    return Array.from({ length: count }, (_, i) => ({ id: `n${i}`, x: 0, y: 0, vx: 1, vy: 1 }));
+  }
+
+  test('every node lands inside its cluster region', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(4)],
+      ['b', makeGroupedNodes(3)],
+      ['c', makeGroupedNodes(2)],
+    ]);
+    const regions = groupedDiscreteLayout(circleLayout, groups, 800, 600);
+    for (const [key, nodes] of groups) {
+      const r = regions.get(key);
+      assert.ok(r, `missing region for ${key}`);
+      for (const node of nodes) {
+        assert.ok(node.x >= r.cx - r.w / 2 - 1e-6, `${key} node left of region`);
+        assert.ok(node.x <= r.cx + r.w / 2 + 1e-6, `${key} node right of region`);
+        assert.ok(node.y >= r.cy - r.h / 2 - 1e-6, `${key} node above region`);
+        assert.ok(node.y <= r.cy + r.h / 2 + 1e-6, `${key} node below region`);
+      }
+    }
+  });
+
+  test('regions for different clusters do not overlap', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(5)],
+      ['b', makeGroupedNodes(4)],
+      ['c', makeGroupedNodes(3)],
+      ['d', makeGroupedNodes(2)],
+    ]);
+    const regions = groupedDiscreteLayout(gridLayout, groups, 800, 600);
+    const rects = [...regions.values()].map((r) => ({
+      x0: r.cx - r.w / 2, x1: r.cx + r.w / 2,
+      y0: r.cy - r.h / 2, y1: r.cy + r.h / 2,
+    }));
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        const overlapX = a.x0 < b.x1 && b.x0 < a.x1;
+        const overlapY = a.y0 < b.y1 && b.y0 < a.y1;
+        assert.ok(!(overlapX && overlapY), `regions ${i} and ${j} overlap`);
+      }
+    }
+  });
+
+  test('velocities reset to 0', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(3)],
+      ['b', makeGroupedNodes(2)],
+    ]);
+    groupedDiscreteLayout(circleLayout, groups, 800, 600);
+    for (const nodes of groups.values()) {
+      for (const node of nodes) {
+        assert.equal(node.vx, 0);
+        assert.equal(node.vy, 0);
+      }
+    }
+  });
+
+  test('empty groups map returns empty regions', () => {
+    const regions = groupedDiscreteLayout(circleLayout, new Map(), 800, 600);
+    assert.equal(regions.size, 0);
+  });
+
+  test('single cluster fills the whole viewport region', () => {
+    const groups = new Map([['only', makeGroupedNodes(4)]]);
+    const regions = groupedDiscreteLayout(circleLayout, groups, 800, 600);
+    assert.equal(regions.size, 1);
+    const r = regions.get('only');
+    assert.equal(r.cx, 400);
+    assert.equal(r.cy, 300);
+    // All nodes must be within the single region
+    for (const node of groups.get('only')) {
+      assert.ok(Math.abs(node.x - 400) <= r.w / 2 + 1e-6);
+      assert.ok(Math.abs(node.y - 300) <= r.h / 2 + 1e-6);
+    }
+  });
+
+  test('single node per cluster still gets a region', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(1)],
+      ['b', makeGroupedNodes(1)],
+    ]);
+    const regions = groupedDiscreteLayout(circleLayout, groups, 800, 600);
+    assert.equal(regions.size, 2);
+    for (const [key, nodes] of groups) {
+      const r = regions.get(key);
+      assert.ok(r, `missing region for ${key}`);
+      assert.ok(Math.abs(nodes[0].x - r.cx) <= r.w / 2 + 1e-6);
+      assert.ok(Math.abs(nodes[0].y - r.cy) <= r.h / 2 + 1e-6);
+    }
+  });
+
+  test('clusters with zero visible members do not appear', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(3)],
+      ['empty', []],
+    ]);
+    const regions = groupedDiscreteLayout(circleLayout, groups, 800, 600);
+    assert.equal(regions.size, 1);
+    assert.ok(!regions.has('empty'));
+  });
+
+  test('deterministic for same input', () => {
+    const make = () => new Map([
+      ['a', makeGroupedNodes(4)],
+      ['b', makeGroupedNodes(2)],
+      ['c', makeGroupedNodes(3)],
+    ]);
+    const r1 = groupedDiscreteLayout(circleLayout, make(), 800, 600);
+    const r2 = groupedDiscreteLayout(circleLayout, make(), 800, 600);
+    assert.deepEqual([...r1], [...r2]);
+  });
+
+  test('works with every discrete layout as the base function', () => {
+    const groups = new Map([
+      ['a', makeGroupedNodes(4)],
+      ['b', makeGroupedNodes(3)],
+    ]);
+    const edges = makeEdges([['a', 'b']]);
+    const fns = [
+      (nodes, w, h) => circleLayout(nodes, w, h),
+      (nodes, w, h) => gridLayout(nodes, w, h),
+      (nodes, w, h) => concentricLayout(nodes, edges, w, h),
+      (nodes, w, h) => radialTreeLayout(nodes, () => [], w, h),
+      (nodes, w, h) => avsdfLayout(nodes, edges, w, h),
+    ];
+    for (const fn of fns) {
+      const regions = groupedDiscreteLayout(fn, groups, 800, 600);
+      assert.equal(regions.size, 2);
+      for (const nodes of groups.values()) {
+        for (const node of nodes) {
+          assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y), 'positions must be finite');
+        }
+      }
+    }
   });
 });

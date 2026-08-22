@@ -482,3 +482,72 @@ test('help modal content has accessible headings and table structure', async ({ 
   // Close to clean up
   await page.keyboard.press('Escape');
 });
+
+/* ================================================================
+ *  Grouping accessibility
+ * ================================================================ */
+
+test('grouping checkbox and select have associated labels', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  // Checkbox has an aria-label
+  const ariaLabel = await page.locator('#grouping-enabled').getAttribute('aria-label');
+  expect(ariaLabel).toBe('Group nodes into clusters');
+
+  // Select has an associated label via for/id
+  const labelFor = await page.locator('label[for="select-group-by"]').getAttribute('for');
+  expect(labelFor).toBe('select-group-by');
+  const selectAria = await page.locator('#select-group-by').getAttribute('aria-label');
+  expect(selectAria).toBe('Grouping key');
+});
+
+test('live region announces grouping enable/disable', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const sr = page.locator('#sr-announcements');
+
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(200);
+  let announcement = await sr.textContent();
+  expect(announcement).toContain('Grouping enabled');
+  expect(announcement).toContain('node type');
+
+  await page.locator('#grouping-enabled').uncheck();
+  await page.waitForTimeout(200);
+  announcement = await sr.textContent();
+  expect(announcement).toContain('Grouping disabled');
+});
+
+test('grouping section heading participates in collapsible-section behaviour', async ({ page }) => {
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 5000 });
+  await page.waitForTimeout(1000);
+
+  const heading = page.locator('#grouping-controls').locator('xpath=ancestor::div[contains(@class,"sidebar-section")]/h2');
+  await expect(heading).toHaveText('Grouping');
+
+  const role = await heading.getAttribute('role');
+  const ariaExpanded = await heading.getAttribute('aria-expanded');
+  expect(role).toBe('button');
+  expect(ariaExpanded).toBe('true');
+
+  const tabindex = await heading.getAttribute('tabindex');
+  expect(tabindex).toBe('0');
+
+  // Toggle with keyboard — Enter collapses the section
+  await heading.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  expect(await heading.getAttribute('aria-expanded')).toBe('false');
+
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  expect(await heading.getAttribute('aria-expanded')).toBe('true');
+});

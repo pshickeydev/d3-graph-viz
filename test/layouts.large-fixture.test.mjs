@@ -89,3 +89,33 @@ test('layouts work on 9.6k-node fixture', async ({ page }) => {
   // No page errors should have accumulated.
   expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);
 });
+
+test('grouping works on 9.6k-node fixture', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+
+  await page.goto(BASE_URL);
+  await page.locator('#file-input').setInputFiles(GRAPH_FILE);
+  await expect(page.locator('#graph-container > svg[role="img"]')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#loading-overlay')).toBeHidden({ timeout: 30000 });
+  await page.waitForTimeout(1000);
+
+  // Expand all so many nodes are visible, then enable grouping.
+  await page.locator('#btn-expand-all').click();
+  await expect(page.locator('#loading-overlay')).toBeHidden({ timeout: 30000 });
+  await page.waitForTimeout(1500);
+
+  await page.locator('#grouping-enabled').check();
+  await page.waitForTimeout(1500);
+
+  // Above 1k visible nodes hulls are deferred until the simulation
+  // settles, so allow time for alpha to decay below 0.05.
+  await page.waitForTimeout(4000);
+  const hulls = await page.evaluate(
+    () => document.querySelectorAll('#graph-container .hulls path.hull').length,
+  );
+  expect(hulls, 'hulls should render after the simulation settles').toBeGreaterThan(0);
+
+  // No browser errors at scale.
+  expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);
+});

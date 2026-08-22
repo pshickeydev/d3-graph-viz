@@ -230,6 +230,36 @@ export class GraphStore {
      * @type {Map<string, {fn: string, values: Map<string, number>, range: {min: number, max: number}}>}
      */
     this._rollupCacheByAttr = new Map();
+
+    /**
+     * Grouping state. When enabled, visible nodes are partitioned into
+     * clusters (by node type or connected component) and the renderer
+     * draws labelled hulls/regions around them. Reset on every load().
+     */
+    this._groupingEnabled = false;
+    /** @type {'type'|'component'} */
+    this._groupBy = 'type';
+    /**
+     * Node id → connected-component index. Computed once at load() via
+     * union-find over the full edge list (edges treated as undirected),
+     * so ids are stable across expand/collapse regardless of the
+     * visible subset.
+     * @type {Map<string, number>}
+     */
+    this._componentId = new Map();
+    /**
+     * Cached per-component member counts at load time, so group labels
+     * can report component sizes without recounting. Order of entries
+     * is component-index order.
+     * @type {Map<number, number>}
+     */
+    this._componentSizes = new Map();
+    /**
+     * Lazily-built component index → 1-based rank (largest component
+     * first). Built on first use by `_componentSizeRankings()`.
+     * @type {Map<number, number>|null}
+     */
+    this._componentSizeRank = null;
   }
 
   /* ---------------------------------------------------------------- */
@@ -277,6 +307,18 @@ export class GraphStore {
       const node = this.nodeMap.get(id);
       if (node) node.childCount = children.length;
     }
+
+    // Connected components (union-find over edges, treated as undirected).
+    // Computed once from the full edge list so component ids are stable
+    // across expand/collapse regardless of the visible subset.
+    this._componentId = this._computeComponents();
+
+    // Cache per-component member counts for group labels.
+    this._componentSizes = new Map();
+    for (const cid of this._componentId.values()) {
+      this._componentSizes.set(cid, (this._componentSizes.get(cid) || 0) + 1);
+    }
+    this._componentSizeRank = null;
 
     // Cache nodes whose parents span multiple types (DAG diamonds)
     this._multiParentIds.clear();
@@ -330,6 +372,50 @@ export class GraphStore {
     // Topology changed — descendant sets and per-attr rollup caches are stale
     this._descendantSets = null;
     this._rollupCacheByAttr.clear();
+    // Grouping is off by default for every freshly loaded graph
+    this._groupingEnabled = false;
+    this._groupBy = 'type';
+  }
+
+  /**
+   * Compute connected components over the full edge list (edges
+   * treated as undirected) using union-find. Component ids are
+   * deterministic: numbered in order of first encounter while
+   * iterating nodes in input order.
+   * @returns {Map<string, number>} node id → component index
+   */
+  _computeComponents() {
+    /** @type {Map<string, string>} union-find parent map */
+    const parent = new Map();
+    const find = (id) => {
+      let p = parent.get(id);
+      if (p === undefined) { parent.set(id, id); return id; }
+      while (p !== parent.get(p)) { p = parent.get(p); }
+      return p;
+    };
+    const union = (a, b) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
+
+    // Seed every node so isolated nodes form singleton components
+    for (const id of this.nodeMap.keys()) parent.set(id, id);
+    for (const e of this.raw.edges) union(e.from, e.to);
+
+    const idToComponent = new Map();
+    const componentOfRoot = new Map();
+    let nextId = 0;
+    for (const id of this.nodeMap.keys()) {
+      const root = find(id);
+      let cid = componentOfRoot.get(root);
+      if (cid === undefined) {
+        cid = nextId++;
+        componentOfRoot.set(root, cid);
+      }
+      idToComponent.set(id, cid);
+    }
+    return idToComponent;
   }
 
   /* ---------------------------------------------------------------- */
@@ -631,6 +717,157 @@ export class GraphStore {
   rollupValue(node) {
     if (!this.rollupActive()) return undefined;
     return this._rollupCache.get(node.id);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Grouping (compound / cluster)                                    */
+  /* ---------------------------------------------------------------- */
+
+  get groupingEnabled() { return this._groupingEnabled; }
+
+  /**
+   * Enable or disable cluster grouping. When on, the renderer draws
+   * labelled hulls around each visible group and switches the cluster
+   * force / discrete layouts to group-aware mode.
+   * @param {boolean} enabled
+   */
+  setGroupingEnabled(enabled) {
+    this._groupingEnabled = !!enabled;
+  }
+
+  get groupBy() { return this._groupBy; }
+
+  /**
+   * Set the grouping key. Valid keys: 'type' (node type) and
+   * 'component' (connected component).
+   * @param {'type'|'component'} key
+   */
+  setGroupBy(key) {
+    if (key !== 'type' && key !== 'component') {
+      throw new Error(`Unknown group-by key: ${key}`);
+    }
+    this._groupBy = key;
+  }
+
+  /**
+   * Group key for a node under the active grouping mode.
+   * For 'type' the key is the node's type; for 'component' it is
+   * the 1-based component index (labels are prettier than raw 0-based ids).
+   * @param {GraphNode} node
+   * @returns {string}
+   */
+  groupKeyFor(node) {
+    if (this._groupBy === 'component') {
+      const cid = this._componentId.get(node.id);
+      return cid == null ? '-1' : String(cid + 1);
+    }
+    return node.type;
+  }
+
+  /**
+   * Human-readable label for a group key.
+   * @param {string} key
+   * @returns {string}
+   */
+  groupLabel(key) {
+    if (this._groupBy === 'type') return key;
+    // Component 1 is the largest component, 2 the next, and so on —
+    // sizes are cached at load() so labels are stable across renders.
+    const idx = Number(key) - 1;
+    const rankings = this._componentSizeRankings();
+    return `Component ${rankings[idx] ?? key}`;
+  }
+
+  /**
+   * Colour for a group. Types reuse the type palette; components use
+   * a fixed grey/slate ramp so components never collide with type
+   * colours.
+   * @param {string} key
+   * @returns {string}
+   */
+  groupColor(key) {
+    if (this._groupBy === 'type') return this.colorForType(key);
+    const idx = Number(key) - 1;
+    const GREYS = ['#94a3b8', '#64748b', '#cbd5e1', '#475569', '#e2e8f0', '#334155', '#f1f5f9', '#1e293b'];
+    return GREYS[((idx % GREYS.length) + GREYS.length) % GREYS.length];
+  }
+
+  /**
+   * Partition an array of nodes into groups under the active grouping
+   * mode. Preserves the input order of nodes within each group.
+   * @param {GraphNode[]} nodes
+   * @returns {Map<string, GraphNode[]>} group key → member nodes
+   */
+  visibleGroups(nodes) {
+    /** @type {Map<string, GraphNode[]>} */
+    const groups = new Map();
+    for (const node of nodes) {
+      const key = this.groupKeyFor(node);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(node);
+    }
+    return groups;
+  }
+
+  /**
+   * Spatial cluster centers keyed by group (for the group-aware
+   * cluster force). For type grouping this mirrors clusterCenters();
+   * for component grouping it places each visible component on a
+   * circle around the canvas center. Falls back to clusterCenters()
+   * semantics when grouping is off or no component info exists.
+   * @param {number} width
+   * @param {number} height
+   * @param {GraphNode[]} [visibleNodes] - visible nodes; required to
+   *   know which components are actually on screen
+   * @returns {Map<string, {x: number, y: number}>}
+   */
+  groupCenters(width, height, visibleNodes) {
+    if (!this._groupingEnabled || this._groupBy !== 'component') {
+      return this.clusterCenters(width, height);
+    }
+    const centers = new Map();
+    const visible = visibleNodes || [];
+    const seen = new Set();
+    const keyList = [];
+    for (const node of visible) {
+      const key = this.groupKeyFor(node);
+      if (!seen.has(key)) {
+        seen.add(key);
+        keyList.push(key);
+      }
+    }
+    const n = keyList.length;
+    if (n === 0) return centers;
+    const cx = width / 2;
+    const cy = height / 2;
+    if (n === 1) {
+      centers.set(keyList[0], { x: cx, y: cy });
+      return centers;
+    }
+    const radius = Math.min(width, height) * 0.35;
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+      centers.set(keyList[i], {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+      });
+    }
+    return centers;
+  }
+
+  /**
+   * Component indices ranked by total member count (largest first).
+   * Computed lazily from the cached per-component sizes so group
+   * labels stay stable and cheap.
+   * @returns {Map<number, number>} component index → 1-based rank
+   */
+  _componentSizeRankings() {
+    if (this._componentSizeRank) return this._componentSizeRank;
+    const entries = [...this._componentSizes.entries()];
+    entries.sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+    /** @type {Map<number, number>} component index → rank (1-based) */
+    this._componentSizeRank = new Map(entries.map(([cid], i) => [cid, i + 1]));
+    return this._componentSizeRank;
   }
 
   /**

@@ -119,6 +119,7 @@
                   <li><strong>Edge Types</strong>: view relationship counts. Click a colour swatch to customise edge colours.</li>
                   <li><strong>Visual Mapping</strong>: colour nodes by a numeric or categorical attribute, and size nodes by a numeric attribute. Enable <em>Roll up descendant values</em> to aggregate across sub-trees so ancestors without the raw attribute still get a colour or size.</li>
                   <li><strong>Layout</strong>: switch between force-directed and discrete layouts (circle, grid, concentric, radial tree, AVSDF circular). Discrete layouts stop the simulation and fit the view.</li>
+                  <li><strong>Grouping</strong>: enclose visible nodes in labelled clusters by node type or connected component. Works with both force and discrete layouts.</li>
                   <li><strong>Forces</strong>: adjust repulsion, link distance, gravity, collision, and clustering. Hidden while a discrete layout is active.</li>
                 </ul>
               </section>
@@ -200,6 +201,14 @@
           <h2 class="sidebar-heading">Layout</h2>
           <div class="sidebar-section-body">
             <div id="layout-selector"></div>
+          </div>
+        </div>
+
+        <!-- Grouping -->
+        <div class="sidebar-section">
+          <h2 class="sidebar-heading">Grouping</h2>
+          <div class="sidebar-section-body">
+            <div id="grouping-controls"></div>
           </div>
         </div>
 

@@ -514,6 +514,75 @@ function avsdfAdjust(order, adj) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Grouped discrete layout (compound / cluster)                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Wrap any discrete layout so it runs per-cluster. Visible nodes are
+ * partitioned into groups; each group is assigned a non-overlapping
+ * region of the viewport (grid-packed, cell size proportional to
+ * sqrt(member count)), then `baseLayoutFn` runs inside each region
+ * with the region's origin offset applied. Returns the region map so
+ * the renderer can draw labelled regions without recomputing hulls.
+ *
+ * @param {function} baseLayoutFn - one of the discrete layout functions
+ *   (circleLayout, gridLayout, ...). Signature: (nodes, w, h, opts).
+ * @param {Map<string, Object[]>} groups - group key to member nodes
+ * @param {number} width
+ * @param {number} height
+ * @param {Object} [opts] - forwarded to baseLayoutFn per cluster
+ * @returns {Map<string, {cx: number, cy: number, w: number, h: number}>}
+ */
+export function groupedDiscreteLayout(baseLayoutFn, groups, width, height, opts = {}) {
+  /** @type {Map<string, {cx: number, cy: number, w: number, h: number}>} */
+  const regions = new Map();
+  const entries = [...groups.entries()].filter(([, nodes]) => nodes.length > 0);
+  if (entries.length === 0 || width <= 0 || height <= 0) return regions;
+
+  // Deterministic order: size descending, then key ascending.
+  entries.sort((a, b) => {
+    if (b[1].length !== a[1].length) return b[1].length - a[1].length;
+    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  });
+
+  const n = entries.length;
+  // Grid roughly matches the viewport aspect ratio.
+  const cols = Math.max(1, Math.round(Math.sqrt((n * width) / Math.max(height, 1))));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const cellW = width / cols;
+  const cellH = height / rows;
+
+  // Cell size proportional to sqrt(member count), capped so regions
+  // never exceed their cell (guarantees non-overlap).
+  const areas = entries.map(([, nodes]) => Math.sqrt(nodes.length));
+  const maxArea = Math.max(...areas, 1);
+  const MIN_DIM = 60;
+
+  entries.forEach(([key, nodes], i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const frac = Math.sqrt(nodes.length) / maxArea;
+    const w = Math.min(cellW, Math.max(MIN_DIM, cellW * frac));
+    const h = Math.min(cellH, Math.max(MIN_DIM, cellH * frac));
+    const cx = cellW * (col + 0.5);
+    const cy = cellH * (row + 0.5);
+    regions.set(key, { cx, cy, w, h });
+
+    const originX = cx - w / 2;
+    const originY = cy - h / 2;
+    baseLayoutFn(nodes, w, h, opts);
+    for (const node of nodes) {
+      node.x += originX;
+      node.y += originY;
+      node.vx = 0;
+      node.vy = 0;
+    }
+  });
+
+  return regions;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Layout registry                                                    */
 /* ------------------------------------------------------------------ */
 

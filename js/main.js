@@ -13,6 +13,7 @@ import {
   renderColorLegend,
   renderForceControls,
   renderLayoutSelector,
+  renderGroupingControls,
   wireSearch,
   wireSidebarCollapse,
   showTooltip,
@@ -41,6 +42,7 @@ const attrSel   = $('#attr-selectors');
 const legend    = $('#color-legend');
 const forceCtrl = $('#force-controls');
 const layoutSel = $('#layout-selector');
+const groupingEl = $('#grouping-controls');
 const forceSection = $('#force-section');
 const btnExpandAll   = $('#btn-expand-all');
 const btnCollapseAll = $('#btn-collapse-all');
@@ -383,6 +385,14 @@ function loadGraph(json) {
   if (forceSection && renderer.isForceLayout()) {
     forceSection.classList.remove('hidden');
   }
+  function onGroupingChange() {
+    const state = store.groupingEnabled ? 'enabled' : 'disabled';
+    const by = store.groupBy === 'component' ? 'connected component' : 'node type';
+    announce(`Grouping ${state}${store.groupingEnabled ? `, grouped by ${by}` : ''}`);
+    renderGroupingControls(groupingEl, store, onGroupingChange);
+    refreshGraph();
+  }
+  renderGroupingControls(groupingEl, store, onGroupingChange);
   renderDetail(detail, null, [], store);
   hideDetailModal();
 }

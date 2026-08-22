@@ -1504,3 +1504,248 @@ describe('rollup — performance on large graph', () => {
     assert.equal(restored, sumValue, 'fn switch back should restore original value');
   });
 });
+
+/* ================================================================
+ *  Grouping (compound / cluster)
+ * ================================================================ */
+
+describe('grouping', () => {
+  test('grouping defaults to off with type grouping', () => {
+    const { store } = createStore(100, 100);
+    assert.equal(store.groupingEnabled, false);
+    assert.equal(store.groupBy, 'type');
+  });
+
+  test('groupKeyFor returns the node type by default', () => {
+    const { store } = createStore(100, 100);
+    const node = store.nodeMap.get('n0');
+    assert.equal(store.groupKeyFor(node), node.type);
+  });
+
+  test('setGroupingEnabled / setGroupBy update state', () => {
+    const { store } = createStore(100, 100);
+    store.setGroupingEnabled(true);
+    assert.equal(store.groupingEnabled, true);
+    store.setGroupBy('component');
+    assert.equal(store.groupBy, 'component');
+    store.setGroupingEnabled(false);
+    assert.equal(store.groupingEnabled, false);
+  });
+
+  test('setGroupBy rejects unknown keys', () => {
+    const { store } = createStore(100, 100);
+    assert.throws(() => store.setGroupBy('bogus'), /Unknown group-by key/);
+    assert.equal(store.groupBy, 'type', 'groupBy should be unchanged');
+  });
+
+  test('two disconnected hierarchies produce distinct component ids', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a1', type: 'x', label: 'A1' },
+        { id: 'a2', type: 'x', label: 'A2' },
+        { id: 'b1', type: 'y', label: 'B1' },
+        { id: 'b2', type: 'y', label: 'B2' },
+      ],
+      edges: [
+        { from: 'a1', to: 'a2', rel: 'r' },
+        { from: 'b1', to: 'b2', rel: 'r' },
+      ],
+    });
+    store.setGroupBy('component');
+    const keyOf = (id) => store.groupKeyFor(store.nodeMap.get(id));
+    assert.equal(keyOf('a1'), keyOf('a2'));
+    assert.equal(keyOf('b1'), keyOf('b2'));
+    assert.notEqual(keyOf('a1'), keyOf('b1'));
+  });
+
+  test('component ids are stable across expand/collapse', () => {
+    const store = new GraphStore();
+    const nodes = [
+      { id: 'root', type: 'root', label: 'Root' },
+      { id: 'c1', type: 'child', label: 'C1' },
+      { id: 'c2', type: 'child', label: 'C2' },
+    ];
+    store.load({
+      nodes,
+      edges: [
+        { from: 'root', to: 'c1', rel: 'r' },
+        { from: 'root', to: 'c2', rel: 'r' },
+      ],
+    });
+    store.setGroupBy('component');
+    const before = store.groupKeyFor(store.nodeMap.get('c1'));
+    // Expand the root so children become visible — ids must not change
+    store.toggleExpand('root');
+    const after = store.groupKeyFor(store.nodeMap.get('c1'));
+    assert.equal(before, after);
+  });
+
+  test('component ids are deterministic across reload', () => {
+    const json = {
+      nodes: [
+        { id: 'a1', type: 'x', label: 'A1' },
+        { id: 'a2', type: 'x', label: 'A2' },
+        { id: 'b1', type: 'y', label: 'B1' },
+      ],
+      edges: [{ from: 'a1', to: 'a2', rel: 'r' }],
+    };
+    const s1 = new GraphStore();
+    s1.load(json);
+    const s2 = new GraphStore();
+    s2.load(json);
+    s1.setGroupBy('component');
+    s2.setGroupBy('component');
+    const k1 = s1.groupKeyFor(s1.nodeMap.get('b1'));
+    const k2 = s2.groupKeyFor(s2.nodeMap.get('b1'));
+    assert.equal(k1, k2);
+  });
+
+  test('uniform direction edges still form one component (undirected union)', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a', type: 'x', label: 'A' },
+        { id: 'b', type: 'y', label: 'B' },
+      ],
+      edges: [{ from: 'b', to: 'a', rel: 'r' }],
+    });
+    store.setGroupBy('component');
+    assert.equal(store.groupKeyFor(store.nodeMap.get('a')), store.groupKeyFor(store.nodeMap.get('b')));
+  });
+
+  test('visibleGroups partitions a node array and skips nothing', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a', type: 'x', label: 'A' },
+        { id: 'b', type: 'y', label: 'B' },
+        { id: 'c', type: 'x', label: 'C' },
+        { id: 'd', type: 'z', label: 'D' },
+      ],
+      edges: [],
+    });
+    const nodes = store.getVisible().nodes;
+    const groups = store.visibleGroups(nodes);
+    let total = 0;
+    for (const members of groups.values()) total += members.length;
+    assert.equal(total, nodes.length, 'every node must belong to exactly one group');
+    assert.equal(groups.get('x').length, 2);
+    assert.equal(groups.get('y').length, 1);
+    assert.equal(groups.get('z').length, 1);
+  });
+
+  test('groupLabel for type grouping is the type name', () => {
+    const { store } = createStore(100, 100);
+    assert.equal(store.groupLabel('root'), 'root');
+    assert.equal(store.groupLabel('leaf'), 'leaf');
+  });
+
+  test('groupLabel for component grouping is Component N', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a1', type: 'x', label: 'A1' },
+        { id: 'a2', type: 'x', label: 'A2' },
+        { id: 'b1', type: 'y', label: 'B1' },
+        { id: 'b2', type: 'y', label: 'B2' },
+      ],
+      edges: [
+        { from: 'a1', to: 'a2', rel: 'r' },
+        { from: 'b1', to: 'b2', rel: 'r' },
+      ],
+    });
+    store.setGroupBy('component');
+    const key = store.groupKeyFor(store.nodeMap.get('a1'));
+    assert.match(store.groupLabel(key), /^Component \d+$/);
+  });
+
+  test('groupColor for type grouping matches the type colour', () => {
+    const { store } = createStore(100, 100);
+    assert.equal(store.groupColor('root'), store.colorForType('root'));
+  });
+
+  test('groupColor for component grouping returns a grey ramp colour', () => {
+    const { store } = createStore(100, 100);
+    store.setGroupBy('component');
+    const first = store.groupColor('1');
+    assert.match(first, /^#[0-9a-f]{6}$/i);
+    // All component colours come from the same grey/slate ramp
+    const second = store.groupColor('2');
+    assert.notEqual(first, second);
+  });
+
+  test('grouping state resets on load', () => {
+    const { store } = createStore(100, 100);
+    store.setGroupingEnabled(true);
+    store.setGroupBy('component');
+    const fresh = createStore(10, 10);
+    store.load({
+      nodes: [...fresh.store.nodeMap.values()].map((n) => ({ ...n, attrs: { ...n.attrs } })),
+      edges: fresh.store.raw.edges,
+    });
+    assert.equal(store.groupingEnabled, false);
+    assert.equal(store.groupBy, 'type');
+  });
+
+  test('groupCenters returns one center per visible group', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a1', type: 'x', label: 'A1' },
+        { id: 'a2', type: 'x', label: 'A2' },
+        { id: 'b1', type: 'y', label: 'B1' },
+        { id: 'b2', type: 'y', label: 'B2' },
+      ],
+      edges: [
+        { from: 'a1', to: 'a2', rel: 'r' },
+        { from: 'b1', to: 'b2', rel: 'r' },
+      ],
+    });
+    store.setGroupingEnabled(true);
+    store.setGroupBy('component');
+    const visible = store.getVisible().nodes;
+    const centers = store.groupCenters(800, 600, visible);
+    assert.equal(centers.size, 2);
+    for (const key of store.visibleGroups(visible).keys()) {
+      assert.ok(centers.has(key), `missing center for group ${key}`);
+    }
+  });
+
+  test('groupCenters is deterministic for same dimensions', () => {
+    const store = new GraphStore();
+    store.load({
+      nodes: [
+        { id: 'a1', type: 'x', label: 'A1' },
+        { id: 'a2', type: 'x', label: 'A2' },
+        { id: 'b1', type: 'y', label: 'B1' },
+        { id: 'b2', type: 'y', label: 'B2' },
+      ],
+      edges: [
+        { from: 'a1', to: 'a2', rel: 'r' },
+        { from: 'b1', to: 'b2', rel: 'r' },
+      ],
+    });
+    store.setGroupingEnabled(true);
+    store.setGroupBy('component');
+    const visible = store.getVisible().nodes;
+    const c1 = store.groupCenters(800, 600, visible);
+    const c2 = store.groupCenters(800, 600, visible);
+    assert.deepEqual([...c1], [...c2]);
+  });
+
+  test('groupCenters falls back to clusterCenters when grouping is off', () => {
+    const { store } = createStore(100, 100);
+    const g = store.groupCenters(800, 600, store.getVisible().nodes);
+    const c = store.clusterCenters(800, 600);
+    assert.deepEqual([...g], [...c]);
+  });
+
+  test('groupCenters falls back to clusterCenters for type grouping', () => {
+    const { store } = createStore(100, 100);
+    store.setGroupingEnabled(true);
+    const g = store.groupCenters(800, 600, store.getVisible().nodes);
+    const c = store.clusterCenters(800, 600);
+    assert.deepEqual([...g], [...c]);
+  });
+});
